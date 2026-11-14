@@ -110,3 +110,39 @@ establish neither a speedup nor a causal regression from the layout change.
 Reproduce with `-DAH_BENCHMARK=ON` and `./build/bench_runtime [seed_bytes]` (0–8 MiB).
 Initial seeding is excluded from the timed interval; context assembly and ordinary
 submit/run durability remain included. All temporary stores are removed by the tool.
+
+## Fresh-context subagents (2026-11-14)
+
+Measured source is `b75c3b2`, version 0.5, on Apple M2 with macOS 26.5.2 and
+Apple Clang 21 in Release mode. `bench_agents` gives each synthetic model request
+20 ms of latency and uses an in-memory SQLite database. The timed interval covers
+submit through tree completion. Each run must return all four child results
+exactly once and record seven model responses and five coordination receipts.
+
+Three separate process invocations each measured concurrency 1 followed by 4,
+with one warmup and eight timed runs per setting. The computer was shared.
+
+| Invocation | Active requests | P50 ms | P95 ms |
+| --- | ---: | ---: | ---: |
+| 1 | 1 | 180.864 | 202.662 |
+| 1 | 4 | 104.400 | 119.168 |
+| 2 | 1 | 191.777 | 199.699 |
+| 2 | 4 | 114.782 | 123.824 |
+| 3 | 1 | 192.444 | 203.306 |
+| 3 | 4 | 114.271 | 125.386 |
+
+The median block P50 was 191.777 ms at concurrency 1 and 114.271 ms at concurrency
+4, a 40.4% reduction for this fixture. Each block reports its lower central order
+statistic as P50 and its maximum of eight samples as P95. The observed peak request
+count matched the configured limit in every run. The root's model requests share
+that limit with its children.
+
+The independent HTTP fixture requires eight simultaneous requests to reach a
+server barrier. Its public CLI case also verifies fresh child inputs, shared host
+instructions, independent routing, join receipts and follow-up tasks against the
+native concurrent transport. These tests exercise loopback HTTP and synthetic
+responses. Subscription-model task latency and quality require separate measurement.
+
+Build with `-AH_BENCHMARK=ON` and run `./build/bench_agents` to reproduce. The
+measured binary SHA-256 was
+`2d7ee4cb9e7c783187e176963dc4b1a0db83e02c72f490b4b2afb8d375c39bb7`.

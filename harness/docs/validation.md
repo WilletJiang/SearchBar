@@ -18,6 +18,7 @@ consume subscription/API quotas. Tests create temporary state and clean it up.
 | observations | SHA-256 known-answer/boundary behavior, active-content reuse, forced reads, changed revisions, compaction/fork invalidation, no reuse of generic previews |
 | workflow | Real dispatch and durable phase evidence, contextual search/pagination, edit-plus-check, fixed checks/cache invalidation, unknown effects |
 | changes | Exact bytes after multi-hunk edits, duplicates/overlap, stale bases, UTF-8 at file edges, preflight and checkpoint faults during multi-file writes |
+| bench_agents_receipts (AH_BENCHMARK) | Exact child results, seven model responses and five coordination receipts at request concurrency 1 and 4 |
 | bench_parallel_receipts (AH_BENCHMARK) | End-to-end ordered contents of four distinct files and four delayed callbacks at concurrency 1 and 4 |
 | find | Independent line-mask oracle, seeded Unicode/CR/overlap cases, dense matches, unaligned ASCII/UTF-8 validation boundaries |
 | task | Bounded repair, revision/policy validation, budgets across submissions/restarts, killed verification/repair-intent recovery, explicit reconciliation and local-check adapter |
@@ -81,3 +82,9 @@ side effects cannot be transactionally rolled back.
 
 Historical claims are tied to the versions and workloads in those records. Current
 optimization questions and the required measurements are in [performance](performance.md).
+
+For RPC shutdown timing under ThreadSanitizer, set
+`TSAN_OPTIONS=atexit_sleep_ms=0`. The sanitizer's default exit sleep can exceed the
+RPC test's two-second shutdown assertion. The agent, parallel-reader and HTTP
+concurrency suites also passed with the default exit sleep. Address/undefined
+behavior builds use `AH_SANITIZE`.

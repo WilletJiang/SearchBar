@@ -145,3 +145,5 @@ other requests during active execution.
 Rebuild embedding clients for the extended 0.5 tool-call struct. The existing
 synchronous provider interface remains available for ordinary sessions. See
 [validation](validation.md) for concurrency, delivery, recovery and CLI coverage.
+
+The [local concurrency measurements](evaluations/local-performance.md#fresh-context-subagents-2026-11-14) record exact result and request counts alongside timings.
