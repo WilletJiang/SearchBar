@@ -18,7 +18,7 @@ typedef struct {
     unsigned cancel_id, error_id, barrier_count, expected_batch, invalid_id;
     bool cancel_before_launch;
     bool entered[CALLS + 1], finished[CALLS + 1], unknown[CALLS + 1], timed_out;
-    bool expect_owner, wait_deadline;
+    bool expect_owner, wait_deadline, wait_yield, yielded;
     bool verify_timing;
     unsigned timed;
     uint64_t began[CALLS + 1], ended[CALLS + 1];

@@ -127,6 +127,8 @@ static ah_code execute(void *context, const ah_tool_call *call, ah_tool_result *
     assert(f->receipts >= f->minimum_receipts[id]);
     if (f->expect_owner)
         assert(pthread_equal(pthread_self(), f->owner));
+    if (f->wait_yield)
+        assert(!call->yield && !call->yield_context);
     pthread_mutex_lock(&f->mutex);
     assert(!f->entered[id]);
     f->entered[id] = true;
@@ -148,6 +150,8 @@ static ah_code execute(void *context, const ah_tool_call *call, ah_tool_result *
         wait_until(f, &f->entered[f->partner[id]]);
     if (f->wait_finished[id])
         wait_until(f, &f->finished[f->wait_finished[id]]);
+    if (f->wait_yield)
+        wait_until(f, &f->yielded);
     if (f->cancel_id == id)
         ah_cancel(f->engine);
     if (f->wait_deadline) {
@@ -334,6 +338,27 @@ static void write_barrier(void) {
     close_fixture(&f);
 }
 
+static void owner_yield(void *context) {
+    fixture *f = context;
+    assert(pthread_equal(pthread_self(), f->owner));
+    pthread_mutex_lock(&f->mutex);
+    f->yielded = true;
+    pthread_cond_broadcast(&f->changed);
+    pthread_mutex_unlock(&f->mutex);
+}
+
+static void yields_while_readers_wait(void) {
+    fixture f = {.names = {"read", "read"}, .count = 2, .barrier_count = 2, .wait_yield = true};
+    open_fixture(&f, 2, 16, 10000);
+    f.engine->yield = owner_yield;
+    f.engine->yield_context = &f;
+    char sid[AH_ID_CAP];
+    assert(run_fixture(&f, sid) == AH_OK);
+    assert(f.yielded && f.executions == 2 && f.max_active == 2);
+    assert_receipt_order(&f, 2);
+    close_fixture(&f);
+}
+
 static void opt_out(void) {
     for (unsigned mode = 0; mode < 3; mode++) {
         fixture f = {.names = {"read", "read"}, .count = 2, .expect_owner = true};
@@ -434,6 +459,7 @@ static void approval_and_input_barriers(void) {
 }
 
 int main(void) {
+    yields_while_readers_wait();
     concurrent_order_and_errors();
     write_barrier();
     opt_out();

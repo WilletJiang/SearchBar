@@ -271,6 +271,8 @@ ah_code ah_local_exec(void *context, const ah_tool_call *call, ah_tool_result *r
     size_t remaining = capacity;
     int reap_delay_ms = 1;
     while (!reaped || streams[0].fd >= 0 || streams[1].fd >= 0 || (stopped_at && !killing)) {
+        if (call->yield)
+            call->yield(call->yield_context);
         if (code == AH_OK)
             code = ah_local_stopped(call);
         if (code == AH_OK && !call->deadline_ms && ah_now_ms() >= fallback_deadline)

@@ -1,6 +1,12 @@
 #include "core.h"
+#include <time.h>
 
 #define MAX_PARALLEL_TOOLS 16
+
+typedef struct {
+    pthread_mutex_t mutex;
+    pthread_cond_t changed;
+} read_completion;
 
 typedef struct {
     ah_engine *engine;
@@ -11,8 +17,9 @@ typedef struct {
     ah_error error;
     ah_code executed;
     atomic_bool *aborted;
+    read_completion *completion;
     pthread_t thread;
-    bool started, late;
+    bool started, late, finished;
     uint64_t began, ended;
 } read_worker;
 
@@ -33,16 +40,46 @@ static void *execute_read(void *context) {
             worker->registered->tool.context, &worker->call, &worker->result, &worker->error);
     worker->late = worker_cancelled(worker);
     worker->ended = ah_now_us();
+    pthread_mutex_lock(&worker->completion->mutex);
+    worker->finished = true;
+    pthread_cond_signal(&worker->completion->changed);
+    pthread_mutex_unlock(&worker->completion->mutex);
     return NULL;
+}
+
+static void join_read(ah_engine *e, read_worker *worker) {
+    read_completion *completion = worker->completion;
+    pthread_mutex_lock(&completion->mutex);
+    while (!worker->finished) {
+#ifdef __APPLE__
+        struct timespec pause = {.tv_nsec = 20000000};
+        pthread_cond_timedwait_relative_np(&completion->changed, &completion->mutex, &pause);
+#else
+        struct timespec deadline;
+        clock_gettime(CLOCK_MONOTONIC, &deadline);
+        deadline.tv_nsec += 20000000;
+        if (deadline.tv_nsec >= 1000000000) {
+            deadline.tv_sec++;
+            deadline.tv_nsec -= 1000000000;
+        }
+        pthread_cond_timedwait(&completion->changed, &completion->mutex, &deadline);
+#endif
+        pthread_mutex_unlock(&completion->mutex);
+        if (e->yield)
+            e->yield(e->yield_context);
+        pthread_mutex_lock(&completion->mutex);
+    }
+    pthread_mutex_unlock(&completion->mutex);
+    pthread_join(worker->thread, NULL);
 }
 
 static bool eligible(ah_engine *e, read_worker *worker) {
     core_operation *op = &worker->operation;
     core_tool *tool = core_find_tool(e, op->name);
-    if (strcmp(op->status, "pending") || op->effect != AH_EFFECT_READ || op->approval ||
-        core_builtin_schema(op->name) || !tool || !tool->tool.parallel_safe ||
-        tool->tool.effect != op->effect || tool->tool.requires_approval != op->approval ||
-        !op->schema || strcmp(tool->schema, op->schema))
+    if (strcmp(op->status, "pending") || op->effect != AH_EFFECT_READ || op->approval || !tool ||
+        !tool->tool.parallel_safe || tool->tool.effect != op->effect ||
+        tool->tool.requires_approval != op->approval || !op->schema ||
+        strcmp(tool->schema, op->schema))
         return false;
     ah_error validation = {0};
     if (ah_schema_validate(tool->schema, op->arguments, &validation) != AH_OK)
@@ -196,6 +233,8 @@ ah_code core_execute_parallel(ah_engine *e, core_session *session, const core_op
         return AH_OK;
 
     read_worker workers[MAX_PARALLEL_TOOLS] = {0};
+    read_completion completion;
+    bool mutex_ready = false, condition_ready = false;
     workers[0].operation = *first;
     if (!eligible(e, &workers[0]))
         return AH_OK;
@@ -204,6 +243,26 @@ ah_code core_execute_parallel(ah_engine *e, core_session *session, const core_op
     if (rc != AH_OK || count < 2)
         goto cleanup;
     *handled = true;
+    if (pthread_mutex_init(&completion.mutex, NULL)) {
+        rc = ah_fail(err, AH_IO, "cannot initialize tool completion mutex");
+        goto cleanup;
+    }
+    mutex_ready = true;
+    pthread_condattr_t attributes;
+    int initialized = pthread_condattr_init(&attributes);
+    if (!initialized) {
+#ifndef __APPLE__
+        initialized = pthread_condattr_setclock(&attributes, CLOCK_MONOTONIC);
+#endif
+        if (!initialized)
+            initialized = pthread_cond_init(&completion.changed, &attributes);
+        pthread_condattr_destroy(&attributes);
+    }
+    if (initialized) {
+        rc = ah_fail(err, AH_IO, "cannot initialize tool completion condition");
+        goto cleanup;
+    }
+    condition_ready = true;
     rc = commit_intents(e, session, workers, count, err);
     if (rc != AH_OK)
         goto cleanup;
@@ -220,6 +279,7 @@ ah_code core_execute_parallel(ah_engine *e, core_session *session, const core_op
         read_worker *worker = &workers[i];
         worker->engine = e;
         worker->aborted = &aborted;
+        worker->completion = &completion;
         worker->call = (ah_tool_call){.session_id = session->id,
                                       .operation_id = worker->operation.id,
                                       .arguments_json = worker->operation.arguments,
@@ -239,7 +299,7 @@ ah_code core_execute_parallel(ah_engine *e, core_session *session, const core_op
     bool late = false;
     for (unsigned i = 0; i < count; i++) {
         if (workers[i].started)
-            pthread_join(workers[i].thread, NULL);
+            join_read(e, &workers[i]);
         if (workers[i].started)
             core_metric(e, session->id, workers[i].operation.id, "tool", workers[i].began,
                         workers[i].ended,
@@ -258,6 +318,10 @@ ah_code core_execute_parallel(ah_engine *e, core_session *session, const core_op
                                                                                : AH_LIMIT,
                      "tool batch completed after cancellation or deadline; receipts recorded");
 cleanup:
+    if (condition_ready)
+        pthread_cond_destroy(&completion.changed);
+    if (mutex_ready)
+        pthread_mutex_destroy(&completion.mutex);
     for (unsigned i = 0; i < count; i++) {
         if (i)
             core_operation_free(&workers[i].operation);

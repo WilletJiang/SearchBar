@@ -150,6 +150,12 @@ clients for the extended 0.3 C structs; saved pending tools still undergo schema
 comparison before execution after an upgrade.
 Back up durable databases before upgrading; older runtimes cannot reopen version 2.
 
+Schema version 4 persists agent identities, generation fences, inbox consumption,
+join deadlines, tree attempt budgets and per-response usage. Existing stores migrate
+within the open transaction. Fresh subagents inherit host instructions and tools,
+with task-specific context supplied explicitly by the sender. See [subagents](subagents.md)
+for delivery, cancellation and recovery. Rebuild C clients for version 0.5.
+
 ## Schema subset
 
 Tool schemas support single-string `type` (object/array/string/integer/number/

@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,6 +17,15 @@
 
 static ah_tool registered[16];
 static size_t tool_count;
+static pthread_t yield_owner;
+static unsigned yield_count;
+static bool yield_enabled;
+
+static void owner_yield(void *context) {
+    CHECK(context == &yield_count);
+    CHECK(pthread_equal(pthread_self(), yield_owner));
+    yield_count++;
+}
 
 ah_code ah_register_tool(ah_engine *engine, const ah_tool *tool, ah_error *error) {
     (void)engine;
@@ -53,7 +63,9 @@ yyjson_doc *tools_invoke(const char *name, const char *args, size_t limit, uint6
                          .cancel_context = cancel_context,
                          .deadline_ms = deadline,
                          .output_limit = limit,
-                         .checkpoint = checkpoint};
+                         .checkpoint = checkpoint,
+                         .yield = yield_enabled ? owner_yield : NULL,
+                         .yield_context = &yield_count};
     ah_tool_result result = {0};
     ah_error error = {0};
     ah_code code = tool->execute(tool->context, &call, &result, &error);
@@ -383,8 +395,12 @@ int main(int argc, char **argv) {
     CHECK(yyjson_equals_str(yyjson_obj_get(yyjson_doc_get_root(doc), "stdout"), "/wCA"));
     yyjson_doc_free(doc);
     args = exec_arguments(executable, "hang", NULL);
+    yield_owner = pthread_self();
+    yield_enabled = true;
     begin = ah_now_ms();
     doc = tools_invoke("exec", args, 1024, begin + 100, NULL, NULL, AH_LIMIT, true);
+    yield_enabled = false;
+    CHECK(yield_count > 0);
     yyjson_doc_free(doc);
     CHECK(ah_now_ms() - begin < 2000);
     uint64_t cancel_at = ah_now_ms() + 100;

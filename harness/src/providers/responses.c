@@ -89,7 +89,7 @@ ah_code ah_responses_set_token(ah_responses *provider, const char *token, ah_err
     ah_error_clear(error);
     if (!provider || !token || !*token || strlen(token) > 16384)
         return ah_fail(error, AH_INVALID, "invalid bearer token");
-    if (provider->busy)
+    if (provider->requests || provider->dispatching)
         return ah_fail(error, AH_BUSY, "provider is running");
     for (const unsigned char *p = (const unsigned char *)token; *p; p++)
         if (*p < 0x21 || *p > 0x7e)
@@ -130,9 +130,8 @@ ah_code ah_responses_open(const ah_responses_config *config, ah_responses **out,
     provider->endpoint = ah_strdup(config->endpoint);
     provider->config.endpoint = provider->endpoint;
     provider->loopback = loopback;
-    provider->easy = curl_easy_init();
     provider->multi = curl_multi_init();
-    if (!provider->endpoint || !provider->easy || !provider->multi) {
+    if (!provider->endpoint || !provider->multi) {
         ah_responses_close(provider);
         return ah_fail(error, AH_IO, "provider initialization failed");
     }
@@ -148,9 +147,11 @@ ah_code ah_responses_open(const ah_responses_config *config, ah_responses **out,
 }
 
 void ah_responses_close(ah_responses *provider) {
-    if (!provider)
+    if (!provider || provider->dispatching)
         return;
-    curl_easy_cleanup(provider->easy);
+    ah_async_provider async = ah_responses_async_provider(provider);
+    while (provider->requests)
+        async.release(provider, provider->requests);
     curl_multi_cleanup(provider->multi);
     responses_wipe(provider->token);
     free(provider->token);

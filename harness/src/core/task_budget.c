@@ -1,4 +1,5 @@
 #include "core.h"
+#include "../agents/agents_internal.h"
 #include <time.h>
 
 uint64_t core_wall_ms(void) {
@@ -10,17 +11,24 @@ uint64_t core_wall_ms(void) {
 
 ah_code core_task_allow(ah_engine *e, const char *sid, bool model, unsigned requested,
                         unsigned *remaining, ah_error *error) {
+    if (e->agents_enabled) {
+        ah_code allowed = agents_allow(e, sid, model, requested, remaining, error);
+        if (allowed != AH_OK)
+            return allowed;
+    }
     sqlite3_stmt *s = NULL;
     ah_code code = core_prepare(
         e,
-        model ? "SELECT model_limit-model_used,state,deadline_ms FROM tasks WHERE session_id=?"
-              : "SELECT tool_limit-tool_used,state,deadline_ms FROM tasks WHERE session_id=?",
+        model ? "SELECT model_limit-model_used,state,deadline_ms FROM tasks WHERE session_id IN "
+                "(?1, (SELECT root_id FROM agent_nodes WHERE session_id=?1))"
+              : "SELECT tool_limit-tool_used,state,deadline_ms FROM tasks WHERE session_id IN (?1, "
+                "(SELECT root_id FROM agent_nodes WHERE session_id=?1))",
         &s, error);
     if (code != AH_OK)
         return code;
     sqlite3_bind_text(s, 1, sid, -1, SQLITE_TRANSIENT);
     int step = sqlite3_step(s);
-    if (step == SQLITE_ROW) {
+    while (step == SQLITE_ROW) {
         sqlite3_int64 left = sqlite3_column_int64(s, 0);
         const char *state = (const char *)sqlite3_column_text(s, 1);
         if (!strcmp(state, "unknown") || !strcmp(state, "verifying"))
@@ -30,7 +38,11 @@ ah_code core_task_allow(ah_engine *e, const char *sid, bool model, unsigned requ
             code = ah_fail(error, AH_LIMIT, "Task-wide budget exhausted or task already accepted");
         if (remaining && code == AH_OK && *remaining > (uint64_t)left)
             *remaining = (unsigned)left;
-    } else if (step != SQLITE_DONE)
+        if (code != AH_OK)
+            break;
+        step = sqlite3_step(s);
+    }
+    if (code == AH_OK && step != SQLITE_DONE)
         code = ah_fail(error, AH_IO, "Cannot load task budget");
     sqlite3_finalize(s);
     return code;
@@ -38,11 +50,18 @@ ah_code core_task_allow(ah_engine *e, const char *sid, bool model, unsigned requ
 
 ah_code core_task_charge(ah_engine *e, const char *sid, bool model, unsigned count,
                          ah_error *error) {
+    if (e->agents_enabled) {
+        ah_code charged = agents_charge(e, sid, model, count, error);
+        if (charged != AH_OK)
+            return charged;
+    }
     sqlite3_stmt *s = NULL;
     ah_code code =
         core_prepare(e,
-                     model ? "UPDATE tasks SET model_used=model_used+? WHERE session_id=?"
-                           : "UPDATE tasks SET tool_used=tool_used+? WHERE session_id=?",
+                     model ? "UPDATE tasks SET model_used=model_used+? WHERE session_id IN (?2, "
+                             "(SELECT root_id FROM agent_nodes WHERE session_id=?2))"
+                           : "UPDATE tasks SET tool_used=tool_used+? WHERE session_id IN (?2, "
+                             "(SELECT root_id FROM agent_nodes WHERE session_id=?2))",
                      &s, error);
     if (code == AH_OK) {
         sqlite3_bind_int64(s, 1, count);
@@ -54,19 +73,26 @@ ah_code core_task_charge(ah_engine *e, const char *sid, bool model, unsigned cou
 
 ah_code core_task_deadline(ah_engine *e, const char *sid, uint64_t *deadline, ah_error *error) {
     sqlite3_stmt *s = NULL;
-    ah_code code = core_prepare(e, "SELECT deadline_ms FROM tasks WHERE session_id=?", &s, error);
+    ah_code code = core_prepare(e,
+                                "SELECT deadline_ms FROM tasks WHERE session_id IN (?1, (SELECT "
+                                "root_id FROM agent_nodes WHERE session_id=?1))",
+                                &s, error);
     if (code != AH_OK)
         return code;
     sqlite3_bind_text(s, 1, sid, -1, SQLITE_TRANSIENT);
     int step = sqlite3_step(s);
-    if (step == SQLITE_ROW) {
+    while (step == SQLITE_ROW) {
         uint64_t wall = core_wall_ms(), end = (uint64_t)sqlite3_column_int64(s, 0),
                  now = ah_now_ms();
         if (wall >= end || *deadline <= now)
             code = ah_fail(error, AH_LIMIT, "Task wall-time budget exhausted");
         else if (end - wall < *deadline - now)
             *deadline = now + (end - wall);
-    } else if (step != SQLITE_DONE)
+        if (code != AH_OK)
+            break;
+        step = sqlite3_step(s);
+    }
+    if (code == AH_OK && step != SQLITE_DONE)
         code = ah_fail(error, AH_IO, "Cannot load task deadline");
     sqlite3_finalize(s);
     return code;

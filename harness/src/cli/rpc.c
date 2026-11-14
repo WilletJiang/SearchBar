@@ -1,4 +1,5 @@
 #include "cli.h"
+#include "ah/agents.h"
 #include "../internal.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -132,6 +133,18 @@ static void dispatch(cli_context *cli, run_job *job, const char *line) {
         goto done;
     } else if (!strcmp(method, "inspect"))
         code = ah_session_json(cli->engine, session, &result, &error);
+    else if (!strcmp(method, "agents"))
+        code = ah_agents_json(cli->engine, session, &result, &error);
+    else if (!strcmp(method, "send")) {
+        yyjson_val *wake = yyjson_obj_get(obj, "wake");
+        if (wake && !yyjson_is_bool(wake)) {
+            invalid(cli, id, "wake must be boolean");
+            goto done;
+        }
+        code = ah_agent_send(cli->engine, session, str(obj, "target"), str(obj, "command"),
+                             str(obj, "text"), yyjson_get_bool(wake), &error);
+    } else if (!strcmp(method, "stop"))
+        code = ah_agent_interrupt(cli->engine, session, str(obj, "target"), &error);
     else if (!strcmp(method, "resume"))
         code = ah_resume(cli->engine, session, &error);
     else if (!strcmp(method, "decide")) {

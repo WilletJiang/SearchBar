@@ -2,23 +2,8 @@
 #include "stream.h"
 #include <stdio.h>
 #include <strings.h>
-#include <time.h>
 
-typedef struct {
-    ah_stream stream;
-    responses_measurement measurement;
-    bool measure;
-    ah_cancel_check cancelled;
-    void *cancel_context;
-    uint64_t deadline;
-    long status;
-    size_t received, header_bytes, limit;
-    unsigned retry_after;
-    bool content_type, content_type_seen, header_complete;
-    ah_error error;
-} transfer;
-
-static ah_code check_stop(transfer *t) {
+ah_code responses_check_stop(responses_request *t) {
     if (t->error.code)
         return t->error.code;
     if (t->cancelled && t->cancelled(t->cancel_context))
@@ -31,20 +16,20 @@ static ah_code check_stop(transfer *t) {
 static int progress(void *context, curl_off_t a, curl_off_t b, curl_off_t c, curl_off_t d) {
     (void)a;
     (void)b;
-    transfer *t = context;
+    responses_request *t = context;
     if (t->measure && c > 0 && d >= c)
         responses_stamp(&t->measurement.metrics.upload_complete, t->measurement.started);
-    return check_stop(context) != AH_OK;
+    return responses_check_stop(context) != AH_OK;
 }
 
 static size_t header(char *bytes, size_t size, size_t count, void *context) {
-    transfer *t = context;
+    responses_request *t = context;
     if (!size || count > SIZE_MAX / size)
         return 0;
     size_t length = size * count;
     if (t->measure && length)
         responses_stamp(&t->measurement.metrics.first_byte, t->measurement.started);
-    if (check_stop(t))
+    if (responses_check_stop(t))
         return 0;
     if (length > 65536 - t->header_bytes) {
         ah_fail(&t->error, AH_LIMIT, "HTTP header limit exceeded");
@@ -99,7 +84,7 @@ static size_t header(char *bytes, size_t size, size_t count, void *context) {
 }
 
 static size_t body(char *bytes, size_t size, size_t count, void *context) {
-    transfer *t = context;
+    responses_request *t = context;
     if (!size || count > SIZE_MAX / size)
         return 0;
     size_t length = size * count;
@@ -108,7 +93,7 @@ static size_t body(char *bytes, size_t size, size_t count, void *context) {
         if (length)
             responses_stamp(&t->measurement.metrics.first_byte, t->measurement.started);
     }
-    if (check_stop(t))
+    if (responses_check_stop(t))
         return 0;
     if (length > t->limit - t->received) {
         ah_fail(&t->error, AH_LIMIT, "response byte limit exceeded");
@@ -126,32 +111,6 @@ static size_t body(char *bytes, size_t size, size_t count, void *context) {
         return 0;
     }
     return length;
-}
-
-static CURLcode perform(ah_responses *provider, transfer *t) {
-    if (curl_multi_add_handle(provider->multi, provider->easy) != CURLM_OK)
-        return CURLE_FAILED_INIT;
-    int running = 1;
-    CURLcode result = CURLE_FAILED_INIT;
-    while (running && !check_stop(t)) {
-        t->measurement.curl_started = true;
-        if (curl_multi_perform(provider->multi, &running) != CURLM_OK)
-            break;
-        if (running && !check_stop(t)) {
-            uint64_t now = ah_now_ms();
-            uint64_t remaining = now < t->deadline ? t->deadline - now : 0;
-            int wait_ms = remaining < 50 ? (int)remaining : 50;
-            if (curl_multi_poll(provider->multi, NULL, 0, wait_ms, NULL) != CURLM_OK)
-                break;
-        }
-    }
-    int pending;
-    CURLMsg *message;
-    while ((message = curl_multi_info_read(provider->multi, &pending)))
-        if (message->msg == CURLMSG_DONE && message->easy_handle == provider->easy)
-            result = message->data.result;
-    curl_multi_remove_handle(provider->multi, provider->easy);
-    return result;
 }
 
 static bool retryable(CURLcode code) {
@@ -181,59 +140,42 @@ static bool request_route(const char *json, char route[525]) {
     return valid;
 }
 
-ah_code responses_complete(void *context, const char *request_json, ah_delta_sink delta,
-                           void *delta_context, ah_cancel_check cancelled, void *cancel_context,
-                           char **response_json, ah_error *error) {
-    ah_responses *provider = context;
-    ah_error_clear(error);
-    if (response_json)
-        *response_json = NULL;
+ah_code responses_request_setup(responses_request *t, ah_error *error) {
+    ah_responses *provider = t->provider;
     char route[525];
-    if (!provider || !response_json || !request_json || !request_route(request_json, route))
+    if (!request_route(t->json, route))
         return ah_fail(error, AH_INVALID, "invalid provider request");
-    if (provider->busy)
-        return ah_fail(error, AH_BUSY, "provider is running");
-    if (!provider->token)
-        return ah_fail(error, AH_AUTH, "provider requires a bearer token");
-    provider->busy = true;
-    uint64_t now = ah_now_ms();
-    uint64_t deadline = provider->config.timeout_ms > UINT64_MAX - now
-                            ? UINT64_MAX
-                            : now + provider->config.timeout_ms;
     size_t auth_size = strlen(provider->token) + 23;
     char *auth = malloc(auth_size);
-    struct curl_slist *headers = NULL;
-    ah_code result = AH_IO;
     if (!auth)
-        goto cleanup;
+        return ah_fail(error, AH_IO, "provider allocation failed");
     snprintf(auth, auth_size, "Authorization: Bearer %s", provider->token);
-    headers = curl_slist_append(NULL, auth);
-    if (!headers)
-        goto cleanup;
-    struct curl_slist *next = curl_slist_append(headers, "Content-Type: application/json");
-    if (!next)
-        goto cleanup;
-    headers = next;
-    next = curl_slist_append(headers, "Accept: text/event-stream");
-    if (!next)
-        goto cleanup;
-    headers = next;
-    if (*route) {
-        next = curl_slist_append(headers, route);
+    t->headers = curl_slist_append(NULL, auth);
+    responses_wipe(auth);
+    free(auth);
+    if (!t->headers)
+        goto failed;
+    const char *extra[] = {"Content-Type: application/json", "Accept: text/event-stream", route};
+    for (size_t i = 0; i < sizeof(extra) / sizeof(extra[0]); i++) {
+        if (!*extra[i])
+            continue;
+        struct curl_slist *next = curl_slist_append(t->headers, extra[i]);
         if (!next)
-            goto cleanup;
-        headers = next;
+            goto failed;
+        t->headers = next;
     }
-    curl_easy_reset(provider->easy); /* Keeps reusable connections. */
+    t->easy = curl_easy_init();
+    if (!t->easy)
+        goto failed;
 #define SET(option, value)                                                                         \
     do {                                                                                           \
-        if (curl_easy_setopt(provider->easy, option, value) != CURLE_OK)                           \
-            goto cleanup;                                                                          \
+        if (curl_easy_setopt(t->easy, option, value) != CURLE_OK)                                  \
+            goto failed;                                                                           \
     } while (0)
     SET(CURLOPT_URL, provider->endpoint);
-    SET(CURLOPT_HTTPHEADER, headers);
-    SET(CURLOPT_POSTFIELDS, request_json);
-    SET(CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)strlen(request_json));
+    SET(CURLOPT_HTTPHEADER, t->headers);
+    SET(CURLOPT_POSTFIELDS, t->json);
+    SET(CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)t->request_bytes);
     SET(CURLOPT_POST, 1L);
     SET(CURLOPT_FOLLOWLOCATION, 0L);
     SET(CURLOPT_SSL_VERIFYPEER, 1L);
@@ -241,8 +183,12 @@ ah_code responses_complete(void *context, const char *request_json, ah_delta_sin
     SET(CURLOPT_NOSIGNAL, 1L);
     SET(CURLOPT_NOPROGRESS, 0L);
     SET(CURLOPT_XFERINFOFUNCTION, progress);
+    SET(CURLOPT_XFERINFODATA, t);
     SET(CURLOPT_WRITEFUNCTION, body);
+    SET(CURLOPT_WRITEDATA, t);
     SET(CURLOPT_HEADERFUNCTION, header);
+    SET(CURLOPT_HEADERDATA, t);
+    SET(CURLOPT_PRIVATE, t);
     if (provider->loopback)
         SET(CURLOPT_PROXY, "");
 #if LIBCURL_VERSION_NUM >= 0x075500
@@ -251,91 +197,95 @@ ah_code responses_complete(void *context, const char *request_json, ah_delta_sin
     SET(CURLOPT_PROTOCOLS,
         (long)(CURLPROTO_HTTPS | (provider->config.allow_loopback_http ? CURLPROTO_HTTP : 0)));
 #endif
-    for (unsigned attempt = 0; attempt <= provider->config.max_retries; attempt++) {
-        transfer t = {.cancelled = cancelled,
-                      .cancel_context = cancel_context,
-                      .deadline = deadline,
-                      .limit = provider->config.max_response_bytes,
-                      .measure = provider->config.observe != NULL};
-        ah_stream_init(&t.stream, provider->config.max_event_bytes, t.limit, delta, delta_context);
-        if (t.measure) {
-            t.measurement.metrics.attempt = attempt + 1;
-            t.measurement.metrics.request_bytes = strlen(request_json);
-            t.stream.phase = responses_phase;
-            t.stream.phase_context = &t.measurement;
-        }
-        SET(CURLOPT_WRITEDATA, &t);
-        SET(CURLOPT_HEADERDATA, &t);
-        SET(CURLOPT_XFERINFODATA, &t);
-        now = ah_now_ms();
-        uint64_t remaining = now < deadline ? deadline - now : 1;
-        SET(CURLOPT_TIMEOUT_MS, (long)remaining);
-        if (t.measure)
-            t.measurement.started = ah_now_us();
-        CURLcode curl_result = perform(provider, &t);
-        bool local_failure = t.error.code != AH_OK;
-        if (t.error.code)
-            result = t.error.code;
-        else if (t.status == 401 || t.status == 403)
-            result = ah_fail(&t.error, AH_AUTH, "provider authentication failed");
-        else if (t.status == 429)
-            result = ah_fail(&t.error, AH_LIMIT, "provider rate or usage limit");
-        else if (t.status >= 500)
-            result = ah_fail(&t.error, AH_NETWORK, "provider HTTP %ld", t.status);
-        else if (curl_result == CURLE_OPERATION_TIMEDOUT)
-            result = ah_fail(&t.error, AH_LIMIT, "provider deadline exceeded");
-        else if (curl_result != CURLE_OK)
-            result =
-                ah_fail(&t.error, AH_NETWORK, "provider transport failure (%d)", (int)curl_result);
-        else if (t.status < 200 || t.status >= 300)
-            result = ah_fail(&t.error, AH_PROTOCOL, "provider HTTP %ld", t.status);
-        else if (t.content_type_seen && !t.content_type)
-            result = ah_fail(&t.error, AH_PROTOCOL, "expected text/event-stream response");
-        else {
-            result = ah_stream_finish(&t.stream, response_json);
-            t.error = t.stream.error;
-        }
-        bool retry = result && !local_failure && result != AH_CANCELLED && result != AH_PROTOCOL &&
-                     result != AH_AUTH && !t.stream.observed_output && !t.stream.terminal &&
-                     attempt < provider->config.max_retries &&
-                     (t.status == 429 || t.status >= 500 || retryable(curl_result)) &&
-                     ah_now_ms() < deadline;
-        if (error)
-            *error = t.error;
-        if (t.measure) {
-            t.measurement.metrics.result = result;
-            t.measurement.metrics.http_status = t.status;
-            t.measurement.metrics.retry_planned = retry;
-            t.measurement.metrics.terminal_completed = t.stream.terminal;
-            responses_observe(provider, &t.measurement);
-        }
-        ah_stream_destroy(&t.stream);
-        if (!retry)
-            break;
-        unsigned delay = t.retry_after ? t.retry_after : 200U << attempt;
-        uint64_t until = ah_now_ms() + delay;
-        t.error = (ah_error){0};
-        while (ah_now_ms() < until && !check_stop(&t)) {
-            struct timespec pause = {.tv_nsec = 50000000};
-            nanosleep(&pause, NULL);
-        }
-        if (t.error.code) {
-            result = t.error.code;
-            if (error)
-                *error = t.error;
-            break;
-        }
-    }
 #undef SET
-cleanup:
-    curl_easy_setopt(provider->easy, CURLOPT_HTTPHEADER, NULL);
-    for (struct curl_slist *item = headers; item; item = item->next)
+    return AH_OK;
+failed:
+    return ah_fail(error, AH_IO, "provider allocation or setup failed");
+}
+
+ah_code responses_attempt_start(responses_request *t) {
+    ah_responses *provider = t->provider;
+    uint64_t now = ah_now_ms();
+    uint64_t remaining = now < t->deadline ? t->deadline - now : 1;
+    if (curl_easy_setopt(t->easy, CURLOPT_TIMEOUT_MS, (long)remaining) != CURLE_OK ||
+        curl_multi_add_handle(provider->multi, t->easy) != CURLM_OK)
+        return ah_fail(&t->error, AH_IO, "provider attempt setup failed");
+    t->active = true;
+    t->attempt++;
+    t->status = 0;
+    t->received = t->header_bytes = 0;
+    t->retry_after = 0;
+    t->content_type = t->content_type_seen = t->header_complete = false;
+    t->error = (ah_error){0};
+    t->measurement = (responses_measurement){0};
+    ah_stream_init(&t->stream, provider->config.max_event_bytes, t->limit, t->delta,
+                   t->delta_context);
+    if (t->measure) {
+        t->measurement.metrics.attempt = t->attempt;
+        t->measurement.metrics.request_bytes = t->request_bytes;
+        t->measurement.started = ah_now_us();
+        t->stream.phase = responses_phase;
+        t->stream.phase_context = &t->measurement;
+    }
+    return AH_OK;
+}
+
+void responses_attempt_finish(responses_request *t, CURLcode curl_result) {
+    ah_responses *provider = t->provider;
+    curl_multi_remove_handle(provider->multi, t->easy);
+    t->active = false;
+    bool local_failure = t->error.code != AH_OK;
+    ah_code result = t->error.code;
+    if (result) {
+        /* Cancellation, limits and parser errors take precedence over curl. */
+    } else if (t->status == 401 || t->status == 403)
+        result = ah_fail(&t->error, AH_AUTH, "provider authentication failed");
+    else if (t->status == 429)
+        result = ah_fail(&t->error, AH_LIMIT, "provider rate or usage limit");
+    else if (t->status >= 500)
+        result = ah_fail(&t->error, AH_NETWORK, "provider HTTP %ld", t->status);
+    else if (curl_result == CURLE_OPERATION_TIMEDOUT)
+        result = ah_fail(&t->error, AH_LIMIT, "provider deadline exceeded");
+    else if (curl_result != CURLE_OK)
+        result =
+            ah_fail(&t->error, AH_NETWORK, "provider transport failure (%d)", (int)curl_result);
+    else if (t->status < 200 || t->status >= 300)
+        result = ah_fail(&t->error, AH_PROTOCOL, "provider HTTP %ld", t->status);
+    else if (t->content_type_seen && !t->content_type)
+        result = ah_fail(&t->error, AH_PROTOCOL, "expected text/event-stream response");
+    else {
+        result = ah_stream_finish(&t->stream, &t->response);
+        t->error = t->stream.error;
+    }
+    bool retry = result && !local_failure && result != AH_CANCELLED && result != AH_PROTOCOL &&
+                 result != AH_AUTH && !t->stream.observed_output && !t->stream.terminal &&
+                 t->attempt <= provider->config.max_retries &&
+                 (t->status == 429 || t->status >= 500 || retryable(curl_result)) &&
+                 ah_now_ms() < t->deadline;
+    if (t->measure) {
+        t->measurement.metrics.result = result;
+        t->measurement.metrics.http_status = t->status;
+        t->measurement.metrics.retry_planned = retry;
+        t->measurement.metrics.terminal_completed = t->stream.terminal;
+        responses_observe(provider, t->easy, &t->measurement);
+    }
+    ah_stream_destroy(&t->stream);
+    t->done = !retry;
+    if (retry) {
+        unsigned delay = t->retry_after ? t->retry_after : 200U << (t->attempt - 1);
+        t->retry_at = ah_now_ms() + delay;
+        t->error = (ah_error){0};
+    }
+}
+
+void responses_request_free(responses_request *t) {
+    if (!t)
+        return;
+    curl_easy_cleanup(t->easy);
+    for (struct curl_slist *item = t->headers; item; item = item->next)
         responses_wipe(item->data);
-    curl_slist_free_all(headers);
-    responses_wipe(auth);
-    free(auth);
-    provider->busy = false;
-    if (result == AH_IO && (!error || !error->code))
-        ah_fail(error, AH_IO, "provider allocation or setup failed");
-    return result;
+    curl_slist_free_all(t->headers);
+    ah_stream_destroy(&t->stream);
+    free(t->response);
+    free(t);
 }

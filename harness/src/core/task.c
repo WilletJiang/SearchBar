@@ -1,5 +1,6 @@
 #include "core.h"
 #include "ah/task.h"
+#include "../agents/agents_internal.h"
 #include <stdio.h>
 
 static yyjson_doc *load(ah_engine *e, const char *sid, ah_error *error) {
@@ -147,6 +148,10 @@ ah_code ah_task_run(ah_engine *e, const char *sid, const ah_task_verifier *verif
         core_session_free(&session);
         if (!completed)
             return AH_OK; /* ask / approval */
+        bool settled = false;
+        code = agents_tree_settled(e, sid, &settled, error);
+        if (code != AH_OK || !settled)
+            return code;
         doc = load(e, sid, error);
         if (!doc)
             return error ? error->code : AH_IO;

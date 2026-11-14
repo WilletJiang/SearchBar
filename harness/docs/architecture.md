@@ -8,6 +8,7 @@ of the library.
 | --- | --- | --- |
 | `include/ah/` | Public C contracts | No private structs or product-specific UI |
 | `src/core/` | Sessions, journal, context, execution/recovery | Calls provider/tool callbacks; one database owner |
+| `src/agents/` | Fresh child sessions, owner scheduling, durable mail, joins and tree accounting | Shared tools, independent request state, explicit wake and recovery |
 | `src/providers/` | Responses lifecycle, HTTP transport and SSE assembly | Returns a validated complete response; no tool execution |
 | `src/tools/` | Local file/process tools and argument validation | Reports results/effect uncertainty to the core |
 | `src/cli/` | CLI/RPC protocol, credentials and signals | Embeds the public runtime |
@@ -50,3 +51,10 @@ See [workflows](workflows.md) for ownership, recovery and migration contracts.
 Version 0.4 consolidates editing in `src/tools/changes.c` and native text retrieval
 in `src/tools/find.c`. Directory listing and the separate exact-edit implementation
 are removed. The public C structs and schema 3 remain unchanged from 0.3.
+
+Version 0.5 introduces `src/agents/` for fresh-context delegation and schema-4
+mail, waits and usage. `src/core/inference.c` shares request intent, acceptance and
+failure handling between the synchronous loop and the agent scheduler.
+`src/providers/responses_async.c` drives concurrent requests on a shared multi
+transport. The extended tool-call struct exposes cooperative owner-thread I/O
+progress. See [subagents](subagents.md) for execution and ownership details.

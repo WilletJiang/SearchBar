@@ -4,7 +4,8 @@
 and writes one JSON object per line on stdout. `--parallel-tools N` configures
 opt-in read concurrency (default 4; 0/1 serial; maximum 16). `--model-tool-bytes N`
 sets the per-result model-view budget (default 16384; 0 disables it; nonzero minimum
-1024). Each input frame is at most 1 MiB.
+1024). Use `--agents N` for fresh-context subagents and concurrent model requests.
+Each input frame is at most 1 MiB.
 Malformed/oversized frames are rejected; framing recovers at the next newline.
 Diagnostics use stderr. The RPC mode is an implementation-specific protocol,
 not a claimed JSON-RPC 2.0 implementation.
@@ -23,6 +24,9 @@ Durable event cursors are monotonically increasing database sequence numbers.
 | `steer` | `session`, `command`, `text` | Queue an update during a run |
 | `inspect` | `session` | Snapshot including pending operation |
 | `list` | none | Session snapshots |
+| `agents` | `session` | Agent tree, states and usage |
+| `send` | `session`, `target`, `command`, `text`, optional boolean `wake` | Durable agent message within the tree |
+| `stop` | `session`, `target` | Interrupt another child in the tree |
 | `resume` | `session` | Explicitly make a stopped/failed session ready |
 | `decide` | `session`, `operation`, `allow` boolean | Answer a pending approval |
 | `reply` | `session`, `operation`, `value` JSON | Answer Ask/external wait |
@@ -105,3 +109,6 @@ registration copies tool strings but borrows tool context. Provider and tool
 results transfer malloc-owned strings to the runtime. Snapshot strings are freed
 with `ah_free`. Observer values are borrowed only during the callback. Providers
 and tool contexts must outlive their engine; close the engine before those hosts.
+
+Delegation adds the `spawn`, `send`, `join`, `stop` and `agents` model tools.
+See [subagent semantics and arguments](subagents.md).

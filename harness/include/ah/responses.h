@@ -1,6 +1,6 @@
 #ifndef AH_RESPONSES_H
 #define AH_RESPONSES_H
-#include "ah.h"
+#include "async.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -10,7 +10,7 @@ typedef struct {
     bool present; /* Distinguishes unavailable/unobserved from a real zero. */
 } ah_responses_time;
 typedef struct {
-    unsigned attempt; /* One-based within complete(); retries are separate receipts. */
+    unsigned attempt; /* One-based within a request; retries are separate receipts. */
     ah_code result;
     long http_status;
     bool retry_planned, terminal_completed; /* A planned retry may be cancelled in backoff. */
@@ -32,7 +32,8 @@ typedef struct {
  * No callback for preflight/setup rejection. Runs on the owner thread while the
  * provider is busy; must not block, reenter, close, or change its token. Copy the
  * receipt if retaining it. A completed terminal alone does not authorize tools:
- * only the final complete() return of AH_OK passes the transport barrier. */
+ * only complete() or a terminal result() returning AH_OK with response JSON
+ * passes the transport barrier. */
 typedef void (*ah_responses_observer)(void *context, const ah_responses_metrics *metrics);
 typedef struct {
     const char *endpoint; /* Full /v1/responses URL. HTTPS; loopback HTTP test opt-in. */
@@ -52,7 +53,15 @@ void ah_responses_close(ah_responses *provider);
  * Keys must be 1..512 printable non-space ASCII bytes; omit/null sends neither
  * a derived routing header nor any cached route from a previous request. */
 ah_provider ah_responses_provider(ah_responses *provider);
-/* Owner-thread only, copies token; host handles OAuth and refresh in its vault. */
+/* Concurrent requests share a connection pool, with separate streams and retry
+ * deadlines. All operations and callbacks run on the owner thread. Callbacks
+ * must not reenter this provider. Release every handle before closing it.
+ * A successful result transfers its JSON once; repeated reads return AH_INVALID.
+ * poll() waits at most 20 ms, including when the pool is empty.
+ * complete() returns AH_BUSY while any async handle remains unreleased. */
+ah_async_provider ah_responses_async_provider(ah_responses *provider);
+/* Owner-thread only, copies token; host handles OAuth and refresh in its vault.
+ * Returns AH_BUSY until every request handle has been released. */
 ah_code ah_responses_set_token(ah_responses *provider, const char *token, ah_error *error);
 #ifdef __cplusplus
 }

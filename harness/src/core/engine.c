@@ -1,4 +1,5 @@
 #include "core.h"
+#include "../agents/agents_internal.h"
 #include <ctype.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -93,7 +94,7 @@ ah_code ah_open(const ah_config *config, ah_engine **out, ah_error *err) {
         else {
             version = sqlite3_column_int(s, 0);
             e->utf8_store = sqlite3_column_int(s, 1) != 0;
-            if (version > 3)
+            if (version > 4)
                 rc = ah_fail(err, AH_PROTOCOL, "database schema is newer than this runtime");
         }
     }
@@ -148,7 +149,18 @@ ah_code ah_open(const ah_config *config, ah_engine **out, ah_error *err) {
     if (rc == AH_OK && version < 2)
         rc = core_migrate_result_refs(e, err);
     if (rc == AH_OK)
-        rc = core_sql(e, "PRAGMA user_version=3; COMMIT", err);
+        rc = agents_schema(e, err);
+    if (rc == AH_OK)
+        rc = core_prepare(e,
+                          "UPDATE agent_nodes SET resume_pending=1 WHERE session_id IN "
+                          "(SELECT id FROM sessions WHERE state=?)",
+                          &s, err);
+    if (rc == AH_OK) {
+        sqlite3_bind_int(s, 1, AH_RUNNING);
+        rc = core_done(e, s, err);
+    }
+    if (rc == AH_OK)
+        rc = core_sql(e, "PRAGMA user_version=4; COMMIT", err);
     if (rc != AH_OK)
         core_rollback(e);
     if (rc == AH_OK)
@@ -195,7 +207,7 @@ ah_code ah_register_tool(ah_engine *e, const ah_tool *tool, ah_error *err) {
     if (isdigit((unsigned char)tool->name[0]) || !strcmp(tool->name, "ask") ||
         !strcmp(tool->name, "wait") || !strcmp(tool->name, "read_result") ||
         !strcmp(tool->name, "harness_ask") || !strcmp(tool->name, "harness_wait") ||
-        core_find_tool(e, tool->name))
+        (e->agents_enabled && agents_tool_schema(tool->name)) || core_find_tool(e, tool->name))
         return ah_fail(err, AH_INVALID, "reserved or duplicate tool name");
     rc = ah_schema_check(tool->parameters_json, err);
     if (rc != AH_OK)

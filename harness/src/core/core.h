@@ -4,6 +4,7 @@
 #include "../hash.h"
 #include "ah/tools.h"
 #include "ah/task.h"
+#include "ah/agents.h"
 #include <sqlite3.h>
 #include <stdatomic.h>
 #include <pthread.h>
@@ -18,6 +19,10 @@ typedef struct {
 } core_tool;
 struct ah_engine {
     ah_config config;
+    ah_agents_config agents;
+    bool agents_enabled;
+    void (*yield)(void *);
+    void *yield_context;
     sqlite3 *db;
     bool utf8_store;
     int lock_fd;
@@ -97,4 +102,10 @@ bool core_task_valid_revision(char[65]);
 ah_code core_task_recover(ah_engine *, ah_error *);
 ah_code core_task_verify(ah_engine *, const char *, const ah_task_verifier *, const char *,
                          ah_error *);
+ah_code core_run_transition(ah_engine *, const char *, ah_state, const char *, const char *,
+                            ah_error *);
+ah_code core_model_intent(ah_engine *, core_session *, ah_error *);
+ah_code core_model_finish(ah_engine *, core_session *, const char *, ah_code, ah_error *);
+ah_code core_run_failure(ah_engine *, core_session *, ah_code, ah_error *, bool *);
+void core_emit_delta(ah_engine *, const char *, const char *, size_t);
 #endif

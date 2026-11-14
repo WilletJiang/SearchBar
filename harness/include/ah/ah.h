@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-#define AH_VERSION "0.4.0"
+#define AH_VERSION "0.5.0"
 #define AH_ID_CAP 37
 #define AH_ERROR_CAP 512
 
@@ -40,7 +40,8 @@ typedef enum {
     AH_COMPLETED,
     AH_STOPPED,
     AH_FAILED,
-    AH_OUTCOME_UNKNOWN
+    AH_OUTCOME_UNKNOWN,
+    AH_WAITING_AGENTS
 } ah_state;
 
 typedef struct {
@@ -82,6 +83,10 @@ typedef struct {
     size_t model_output_limit; /* 0 means no separate model-view bound. */
     ah_checkpoint_fn checkpoint;
     void *checkpoint_context;
+    /* Optional owner callback to advance concurrent model I/O during a long
+     * synchronous tool. Never supplied to parallel READ worker callbacks. */
+    void (*yield)(void *);
+    void *yield_context;
 } ah_tool_call;
 typedef struct {
     char *json; /* malloc-owned valid JSON; runtime frees it. */

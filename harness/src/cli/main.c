@@ -1,6 +1,7 @@
 #include "cli.h"
 #include "ah/responses.h"
 #include "ah/tools.h"
+#include "ah/agents.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -11,31 +12,36 @@
 #include <unistd.h>
 
 static void usage(void) {
-    puts(
-        "ah " AH_VERSION " — durable C agent runtime\n"
-        "Usage: ah COMMAND [options]\n"
-        "Commands: new run resume approve deny reply resolve inspect list events fork compact rpc\n"
-        "  --db PATH            Session database (default ./harness.db)\n"
-        "  --workspace PATH     Register bounded local file tools\n"
-        "  --enable-exec        Explicitly allow process execution (not sandboxed)\n"
-        "  --workflows          Add find text search (apply_changes is always available)\n"
-        "  --model NAME         Model for new session (required by new)\n"
-        "  --instructions TEXT  Developer instructions for new session\n"
-        "  --session ID         Target session\n"
-        "  --prompt TEXT        Submit user text before run\n"
-        "  --command-id ID      Stable idempotency key for prompt (required)\n"
-        "  --operation ID       Approval/input/unknown-operation identity\n"
-        "  --value JSON         Input or reconciliation result\n"
-        "  --summary TEXT       Explicit context checkpoint summary\n"
-        "  --keep-turns N       Recent complete turns retained by compact (default 4)\n"
-        "  --endpoint URL       Full Responses endpoint (default OpenAI public endpoint)\n"
-        "  --token-file PATH    Private token/SIWC JSON file; otherwise AH_ACCESS_TOKEN\n"
-        "  --parallel-tools N   Concurrent opt-in read tools (default 4; 0/1 serial; max 16)\n"
-        "  --model-tool-bytes N  Per-result model view (default 16384; 0 disables cap)\n"
-        "  --events             Print structured execution events\n"
-        "  --allow-http-loopback  Allow local HTTP fixture only\n"
-        "RPC: bounded JSON lines; method/id/session fields. See docs/protocol.md.\n"
-        "Secrets are never accepted on the command line. OAuth belongs to the host.");
+    puts("ah " AH_VERSION " — durable C agent runtime\n"
+         "Usage: ah COMMAND [options]\n"
+         "Commands: new run resume approve deny reply resolve inspect list events fork compact "
+         "agents send stop rpc\n"
+         "  --db PATH            Session database (default ./harness.db)\n"
+         "  --workspace PATH     Register bounded local file tools\n"
+         "  --enable-exec        Explicitly allow process execution (not sandboxed)\n"
+         "  --workflows          Add find text search (apply_changes is always available)\n"
+         "  --model NAME         Model for new session (required by new)\n"
+         "  --instructions TEXT  Developer instructions for new session\n"
+         "  --session ID         Target session\n"
+         "  --prompt TEXT        Submit user text before run\n"
+         "  --command-id ID      Stable idempotency key for prompt (required)\n"
+         "  --operation ID       Approval/input/unknown-operation identity\n"
+         "  --value JSON         Input or reconciliation result\n"
+         "  --summary TEXT       Explicit context checkpoint summary\n"
+         "  --keep-turns N       Recent complete turns retained by compact (default 4)\n"
+         "  --endpoint URL       Full Responses endpoint (default OpenAI public endpoint)\n"
+         "  --token-file PATH    Private token/SIWC JSON file; otherwise AH_ACCESS_TOKEN\n"
+         "  --parallel-tools N   Concurrent opt-in read tools (default 4; 0/1 serial; max 16)\n"
+         "  --agents N           Enable fresh-context subagents, N concurrent model requests\n"
+         "  --agent-limit N      Maximum children per tree (default 32)\n"
+         "  --agent-depth N      Maximum child depth (default 8)\n"
+         "  --target ID          Recipient for send/stop\n"
+         "  --wake               Send a task that can wake an idle child\n"
+         "  --model-tool-bytes N  Per-result model view (default 16384; 0 disables cap)\n"
+         "  --events             Print structured execution events\n"
+         "  --allow-http-loopback  Allow local HTTP fixture only\n"
+         "RPC: bounded JSON lines; method/id/session fields. See docs/protocol.md.\n"
+         "Secrets are never accepted on the command line. OAuth belongs to the host.");
 }
 int main(int argc, char **argv) {
     if (argc < 2 || !strcmp(argv[1], "--help") || !strcmp(argv[1], "help")) {
@@ -51,10 +57,16 @@ int main(int argc, char **argv) {
     const char *command_id = NULL, *operation = NULL, *value = NULL, *summary = NULL;
     const char *endpoint = "https://api.openai.com/v1/responses", *token_file = NULL;
     bool exec_enabled = false, events = false, allow_http = false, workflows = false;
-    unsigned keep = 4, parallel = 4;
+    unsigned keep = 4, parallel = 4, agents = 0, agent_limit = 32, agent_depth = 8;
+    const char *target = NULL;
+    bool wake = false;
     size_t model_tool_bytes = 16384;
     for (int i = 2; i < argc; ++i) {
         const char *arg = argv[i];
+        if (!strcmp(arg, "--wake")) {
+            wake = true;
+            continue;
+        }
         if (!strcmp(arg, "--workflows")) {
             workflows = true;
             continue;
@@ -98,7 +110,25 @@ int main(int argc, char **argv) {
             summary = v;
         else if (!strcmp(arg, "--endpoint"))
             endpoint = v;
-        else if (!strcmp(arg, "--token-file"))
+        else if (!strcmp(arg, "--target"))
+            target = v;
+        else if (!strcmp(arg, "--agents") || !strcmp(arg, "--agent-limit") ||
+                 !strcmp(arg, "--agent-depth")) {
+            char *end = NULL;
+            errno = 0;
+            unsigned long number = strtoul(v, &end, 10);
+            bool limit = !strcmp(arg, "--agent-limit");
+            if (errno || !*v || *end || !number || number > (limit ? 1024UL : 32UL)) {
+                fprintf(stderr, "Invalid %s\n", arg);
+                return 2;
+            }
+            if (limit)
+                agent_limit = (unsigned)number;
+            else if (!strcmp(arg, "--agents"))
+                agents = (unsigned)number;
+            else
+                agent_depth = (unsigned)number;
+        } else if (!strcmp(arg, "--token-file"))
             token_file = v;
         else if (!strcmp(arg, "--parallel-tools") || !strcmp(arg, "--model-tool-bytes")) {
             char *end = NULL;
@@ -136,8 +166,9 @@ int main(int argc, char **argv) {
         fputs("--prompt requires --command-id\n", stderr);
         return 2;
     }
-    const char *commands[] = {"new",     "run",  "resume", "approve", "deny",    "reply", "resolve",
-                              "inspect", "list", "events", "fork",    "compact", "rpc"};
+    const char *commands[] = {"new",     "run",     "resume", "approve", "deny", "reply",
+                              "resolve", "inspect", "list",   "events",  "fork", "compact",
+                              "agents",  "send",    "stop",   "rpc"};
     bool known = false;
     for (size_t i = 0; i < sizeof(commands) / sizeof(commands[0]); i++)
         if (!strcmp(command, commands[i]))
@@ -202,6 +233,15 @@ int main(int argc, char **argv) {
         if (code == AH_OK)
             code = ah_local_tools_register(tools, cli.engine, &error);
     }
+    if (code == AH_OK && agents) {
+        ah_agents_config ac;
+        ah_agents_config_init(&ac);
+        ac.provider = ah_responses_async_provider(responses);
+        ac.max_active = agents;
+        ac.max_agents = agent_limit;
+        ac.max_depth = agent_depth;
+        code = ah_agents_enable(cli.engine, &ac, &error);
+    }
     bool watching = code == AH_OK && cli_signals_start(cli.engine);
     if (code == AH_OK && !watching) {
         code = AH_IO;
@@ -219,6 +259,12 @@ int main(int argc, char **argv) {
             session = id;
         } else if (!strcmp(command, "list"))
             code = ah_sessions_json(cli.engine, &json, &error);
+        else if (!strcmp(command, "agents"))
+            code = ah_agents_json(cli.engine, session, &json, &error);
+        else if (!strcmp(command, "send"))
+            code = ah_agent_send(cli.engine, session, target, command_id, prompt, wake, &error);
+        else if (!strcmp(command, "stop"))
+            code = ah_agent_interrupt(cli.engine, session, target, &error);
         else if (!strcmp(command, "inspect"))
             code = ah_session_json(cli.engine, session, &json, &error);
         else if (!strcmp(command, "events")) {
@@ -237,7 +283,7 @@ int main(int argc, char **argv) {
             session = id;
         } else if (!strcmp(command, "compact"))
             code = ah_compact(cli.engine, session, summary, keep, &error);
-        if (code == AH_OK && prompt)
+        if (code == AH_OK && prompt && strcmp(command, "send"))
             code = ah_submit(cli.engine, session, command_id, prompt, &error);
         if (code == AH_OK && !strcmp(command, "run"))
             code = ah_run(cli.engine, session, &error);

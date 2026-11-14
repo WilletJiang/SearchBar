@@ -146,7 +146,7 @@ const char *ah_code_name(ah_code code) {
 const char *ah_state_name(ah_state state) {
     static const char *const names[] = {
         "idle",      "ready",   "running", "waiting_approval", "waiting_input",
-        "completed", "stopped", "failed",  "outcome_unknown"};
+        "completed", "stopped", "failed",  "outcome_unknown",  "waiting_agents"};
     return (unsigned)state < sizeof(names) / sizeof(names[0]) ? names[state] : "unknown";
 }
 

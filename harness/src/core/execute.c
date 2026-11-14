@@ -1,4 +1,5 @@
 #include "core.h"
+#include "../agents/agents_internal.h"
 
 static ah_code count_call(ah_engine *, const char *, ah_error *);
 
@@ -113,6 +114,8 @@ ah_code core_execute_operation(ah_engine *e, core_session *session, core_operati
     if (!strcmp(op->status, "received") || !strcmp(op->status, "received_late") ||
         !strcmp(op->status, "resolved"))
         return publish_received(e, session, op, err);
+    if (e->agents_enabled && agents_tool_schema(op->name))
+        return agents_execute(e, session, op, err);
     if (strcmp(op->status, "pending") && strcmp(op->status, "approved"))
         return ah_fail(err, AH_PROTOCOL, "unexpected operation status");
     if (session->tool_calls >= e->config.max_tool_calls)
@@ -121,7 +124,7 @@ ah_code core_execute_operation(ah_engine *e, core_session *session, core_operati
     if (allowed != AH_OK)
         return allowed;
     core_tool *registered = core_find_tool(e, op->name);
-    const char *builtin = core_builtin_schema(op->name),
+    const char *builtin = agents_tool_schema(op->name) ? NULL : core_builtin_schema(op->name),
                *schema = builtin ? builtin : (registered ? registered->schema : NULL);
     if (!schema)
         return finish_error(e, session, op, "tool is unavailable", true, err);
@@ -203,7 +206,9 @@ ah_code core_execute_operation(ah_engine *e, core_session *session, core_operati
                          .output_limit = e->config.max_output_bytes,
                          .model_output_limit = e->config.max_model_tool_bytes,
                          .checkpoint = op->effect == AH_EFFECT_READ ? NULL : checkpoint,
-                         .checkpoint_context = &checkpoints};
+                         .checkpoint_context = &checkpoints,
+                         .yield = e->yield,
+                         .yield_context = e->yield_context};
     ah_tool_result result = {0};
     ah_error execution = {0};
     uint64_t started = ah_now_us();

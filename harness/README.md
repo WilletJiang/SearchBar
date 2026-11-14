@@ -14,7 +14,7 @@ with Keychain storage and serialized refresh, without adding dependencies to C c
 ## Build and verify
 
 Requires CMake 3.20+, a C17 compiler, libcurl 7.68+ built with asynchronous DNS,
-SQLite 3, and pthreads. Python 3 is used by integration tests and the optional host adapter. JSON parsing
+SQLite 3.37+, and pthreads. Python 3 is used by integration tests and the optional host adapter. JSON parsing
 uses vendored yyjson 0.12.0. Linux process tools require glibc 2.34+; macOS uses
 native spawn actions. Unsupported process isolation primitives fail closed.
 
@@ -61,12 +61,15 @@ and [performance investigation](docs/performance.md).
 - Bounded parallel reads, ordered receipts, and durable full results with compact model views.
 - Opt-in native `find` with source context; `apply_changes` handles single/multi-file edits and check recipes.
 - Active-context read reuse, host check caching and optional persistent task acceptance/repair budgets.
+- Fresh-context subagents with bounded asynchronous model requests, durable mail, joins and interruption.
+- Per-agent and tree usage accounting, persistent creation identities and restart recovery.
 - Content-free host/provider timing observations, including failed transport attempts.
 - Embedding API, structured events, JSON-lines control interface and CLI.
 
 See [execution semantics](docs/semantics.md), [control protocol](docs/protocol.md),
 [security boundary](SECURITY.md), and [validation](docs/validation.md).
 The [workflow guide](docs/workflows.md) documents the opt-in tools, checks and task API.
+The [subagent guide](docs/subagents.md) covers the C API, CLI and durable coordination.
 
 ## An offline session
 

@@ -1,4 +1,5 @@
 #include "core.h"
+#include "../agents/agents_internal.h"
 
 static const char ask_schema[] =
     "{\"type\":\"object\",\"properties\":{\"question\":{\"type\":\"string\"},\"options\":{\"type\":"
@@ -19,7 +20,7 @@ const char *core_builtin_schema(const char *name) {
         return wait_schema;
     if (!strcmp(name, "read_result"))
         return result_schema;
-    return NULL;
+    return agents_tool_schema(name);
 }
 static bool add_definition(yyjson_mut_doc *d, yyjson_mut_val *arr, const char *name,
                            const char *description, const char *schema) {
@@ -116,6 +117,8 @@ ah_code core_request(ah_engine *e, const core_session *session, char **json, ah_
         if (!add_definition(d, functions, e->tools[i].name, e->tools[i].description,
                             e->tools[i].schema))
             rc = ah_fail(err, AH_IO, "cannot encode tool definition");
+    if (rc == AH_OK && e->agents_enabled && !agents_definitions(d, functions))
+        rc = ah_fail(err, AH_IO, "cannot encode agent definitions");
     if (rc == AH_OK) {
         *json = ah_mut_write(d);
         if (!*json)
@@ -301,6 +304,8 @@ ah_code core_accept_response(ah_engine *e, core_session *session, const char *js
             calls++;
         }
     }
+    if (rc == AH_OK && e->agents_enabled)
+        rc = agents_record_usage(e, session, root, err);
     if (rc == AH_OK)
         rc = core_event(e, session->id, NULL, "model.completed", json, err);
     if (rc == AH_OK && calls == 0) {
@@ -312,7 +317,7 @@ ah_code core_accept_response(ah_engine *e, core_session *session, const char *js
                 break;
             }
         }
-        if (!queued)
+        if (!queued && !e->agents_enabled && !strcmp(e->active_session, session->id))
             e->active_session[0] = '\0';
         pthread_mutex_unlock(&e->mailbox_lock);
         if (!queued) {

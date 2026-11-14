@@ -27,7 +27,7 @@ static ah_responses_time timing(CURL *easy, CURLINFO name) {
     return (ah_responses_time){.us = (uint64_t)value, .present = true};
 }
 
-void responses_observe(ah_responses *provider, responses_measurement *measurement) {
+void responses_observe(ah_responses *provider, CURL *easy, responses_measurement *measurement) {
     if (!provider->config.observe)
         return;
     ah_responses_metrics *metrics = &measurement->metrics;
@@ -35,14 +35,14 @@ void responses_observe(ah_responses *provider, responses_measurement *measuremen
     metrics->elapsed_present = measurement->started && now >= measurement->started;
     metrics->elapsed_us = metrics->elapsed_present ? now - measurement->started : 0;
     if (measurement->curl_started) {
-        metrics->dns = timing(provider->easy, CURLINFO_NAMELOOKUP_TIME_T);
-        metrics->connect = timing(provider->easy, CURLINFO_CONNECT_TIME_T);
-        metrics->tls = timing(provider->easy, CURLINFO_APPCONNECT_TIME_T);
-        metrics->pretransfer = timing(provider->easy, CURLINFO_PRETRANSFER_TIME_T);
-        metrics->curl_first_byte = timing(provider->easy, CURLINFO_STARTTRANSFER_TIME_T);
-        metrics->curl_total = timing(provider->easy, CURLINFO_TOTAL_TIME_T);
-        metrics->new_connections_present = curl_easy_getinfo(provider->easy, CURLINFO_NUM_CONNECTS,
-                                                             &metrics->new_connections) == CURLE_OK;
+        metrics->dns = timing(easy, CURLINFO_NAMELOOKUP_TIME_T);
+        metrics->connect = timing(easy, CURLINFO_CONNECT_TIME_T);
+        metrics->tls = timing(easy, CURLINFO_APPCONNECT_TIME_T);
+        metrics->pretransfer = timing(easy, CURLINFO_PRETRANSFER_TIME_T);
+        metrics->curl_first_byte = timing(easy, CURLINFO_STARTTRANSFER_TIME_T);
+        metrics->curl_total = timing(easy, CURLINFO_TOTAL_TIME_T);
+        metrics->new_connections_present =
+            curl_easy_getinfo(easy, CURLINFO_NUM_CONNECTS, &metrics->new_connections) == CURLE_OK;
     }
     provider->config.observe(provider->config.observe_context, metrics);
 }

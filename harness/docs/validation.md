@@ -21,6 +21,8 @@ consume subscription/API quotas. Tests create temporary state and clean it up.
 | bench_parallel_receipts (AH_BENCHMARK) | End-to-end ordered contents of four distinct files and four delayed callbacks at concurrency 1 and 4 |
 | find | Independent line-mask oracle, seeded Unicode/CR/overlap cases, dense matches, unaligned ASCII/UTF-8 validation boundaries |
 | task | Bounded repair, revision/policy validation, budgets across submissions/restarts, killed verification/repair-intent recovery, explicit reconciliation and local-check adapter |
+| agents | Fresh contexts, concurrent model requests, one-slot nested joins, messaging and wake boundaries, interruption/steering, saved result access, shared budgets/usage, transaction faults and six killed-process checkpoints |
+| http_async | Real concurrent HTTP/SSE, per-request cancellation/retries/routing, token ownership and public CLI delegation/follow-up |
 | http | Scripted real HTTP/SSE, rate/transport retries, no retry after output, auth/MIME/redirect rejection, deadline/cancellation, connection reuse |
 | cli | Actual executable: network-to-tool-to-model loop, persisted approval and Ask across restarts, dedupe/fork/checkpoint, RPC |
 | rpc | Malformed frames, asynchronous cancel, EOF and signals, busy response, no-token metadata commands |

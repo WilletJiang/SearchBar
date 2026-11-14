@@ -149,7 +149,7 @@ static ah_code persist_message(ah_engine *e, core_session *session, core_steerin
 }
 ah_code core_drain_steering(ah_engine *e, core_session *session, bool terminal, ah_error *err) {
     pthread_mutex_lock(&e->mailbox_lock);
-    if (terminal)
+    if (terminal && !e->agents_enabled && !strcmp(e->active_session, session->id))
         e->active_session[0] = '\0';
     core_steering *messages = NULL, *tail = NULL, **link = &e->mailbox_head;
     while (*link) {
