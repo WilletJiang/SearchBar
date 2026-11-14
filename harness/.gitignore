@@ -1,9 +1,0 @@
-/build*/
-*.db
-*.db-journal
-*.db-wal
-*.db-shm
-*.lock
-.env*
-
-__pycache__/

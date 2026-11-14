@@ -8,4 +8,4 @@ Adaptive appearance follows the background behind the search bar. Enable it with
 
 Switching desktops or full-screen spaces dismisses the search panel. Press the shortcut again to open it on the current desktop with a fresh background sample.
 
-The independent [C agent harness](harness/README.md) builds as a library and headless CLI with its own contract tests. It is not yet wired into the search UI.
+The independent [C Harness](https://github.com/WilletJiang/C-Harness) is maintained in its own repository. It is not yet wired into the search UI.
