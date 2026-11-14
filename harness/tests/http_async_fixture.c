@@ -18,7 +18,7 @@ typedef struct {
     size_t length;
     void *handle;
     char *response;
-    uint64_t finished;
+    uint64_t started, finished;
     ah_code code;
     bool done, cancel_on_delta;
 } request;
@@ -66,6 +66,7 @@ static void begin(ah_async_provider async, request *r, size_t index) {
              "\"tag\":\"request-%zu\"%s}",
              index, route);
     ah_error error;
+    r->started = ah_now_ms();
     assert(async.start(async.context, r->json, delta, r, cancelled, r, &r->handle, &error) ==
            AH_OK);
     assert(r->handle);
@@ -87,7 +88,7 @@ int main(int argc, char **argv) {
     config.endpoint = argv[1];
     config.bearer_token = "local-test-token";
     config.allow_loopback_http = true;
-    config.timeout_ms = stagger ? 180 : 3000;
+    config.timeout_ms = stagger ? 1000 : 3000;
     config.observe = observe;
     config.observe_context = &f;
     ah_error error;
@@ -114,7 +115,7 @@ int main(int argc, char **argv) {
     while (remaining) {
         assert(ah_now_ms() - started < 5000);
         assert(async.poll(async.context, 20, &error) == AH_OK);
-        if (stagger && begun == 1 && ah_now_ms() - started >= 100) {
+        if (stagger && begun == 1 && ah_now_ms() - started >= 3 * config.timeout_ms / 4) {
             begin(async, &requests[1], 1);
             begun++;
         }
@@ -160,12 +161,14 @@ int main(int argc, char **argv) {
     assert(async.poll(async.context, 20, &error) == AH_OK);
     assert(ah_now_ms() - idle >= 10);
     assert(receipts == f.count);
-    printf("{\"elapsed\":%llu,\"requests\":[", (unsigned long long)(ah_now_ms() - started));
+    printf("{\"elapsed\":%llu,\"timeout_ms\":%llu,\"requests\":[",
+           (unsigned long long)(ah_now_ms() - started), (unsigned long long)config.timeout_ms);
     for (size_t i = 0; i < count; i++) {
         request *r = &requests[i];
-        printf("%s{\"code\":%d,\"delta\":\"%s\",\"finished\":%llu,\"response\":%s}", i ? "," : "",
-               r->code, r->delta, (unsigned long long)r->finished,
-               r->response ? r->response : "null");
+        printf(
+            "%s{\"code\":%d,\"delta\":\"%s\",\"started\":%llu,\"finished\":%llu,\"response\":%s}",
+            i ? "," : "", r->code, r->delta, (unsigned long long)(r->started - started),
+            (unsigned long long)r->finished, r->response ? r->response : "null");
         free(r->response);
     }
     printf("],\"metrics\":[");
