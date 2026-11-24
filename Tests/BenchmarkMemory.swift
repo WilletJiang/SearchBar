@@ -3,7 +3,7 @@ import Foundation
 
 // Sample off the main thread so a long directory batch cannot hide the allocation peak.
 final class BenchmarkMemory {
-    private let queue = DispatchQueue(label: "argus.benchmark.memory")
+    private let queue = DispatchQueue(label: "searchbar.benchmark.memory")
     private var timer: DispatchSourceTimer?
     private var peak: UInt64 = 0
 

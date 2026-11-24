@@ -9,7 +9,7 @@ if [[ -z "$TASK_ICON_RENDERER" ]]; then
   exit 1
 fi
 
-TASK_ICON_TEMP=$(mktemp -d /tmp/argus-icon.XXXXXX)
+TASK_ICON_TEMP=$(mktemp -d /tmp/searchbar-icon.XXXXXX)
 trap 'rm -rf "$TASK_ICON_TEMP"' EXIT
 TASK_ICON_SET="$TASK_ICON_TEMP/AppIcon.iconset"
 mkdir -p "$TASK_ICON_SET"

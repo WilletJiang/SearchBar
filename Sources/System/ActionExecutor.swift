@@ -6,8 +6,8 @@ final class ActionExecutor {
             run("/usr/bin/shortcuts", arguments: ["run", result.target], completion: completion)
             return
         }
-        if result.target.hasPrefix("argus-action:") {
-            executeSystemAction(String(result.target.dropFirst("argus-action:".count)), completion: completion)
+        if result.target.hasPrefix("searchbar-action:") {
+            executeSystemAction(String(result.target.dropFirst("searchbar-action:".count)), completion: completion)
             return
         }
         DispatchQueue.main.async {

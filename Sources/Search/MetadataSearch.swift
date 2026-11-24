@@ -25,7 +25,7 @@ final class MetadataSearch {
         }
     }
 
-    private let queue = DispatchQueue(label: "Argus.metadata-search", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "SearchBar.metadata-search", qos: .userInitiated)
     private let lock = NSLock()
     private var generation = 0
     private var active: Session?

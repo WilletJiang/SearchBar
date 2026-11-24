@@ -40,7 +40,7 @@ struct MetadataSearchTests {
         var obsolete = false
         var current = false
         provider.search("superseded-query") { _ in obsolete = true }
-        provider.search("argus-unique-no-match-" + UUID().uuidString) { _ in current = true }
+        provider.search("searchbar-unique-no-match-" + UUID().uuidString) { _ in current = true }
         wait { current }
         precondition(!obsolete, "Superseded results must not reach the UI")
         var cancelled = false
@@ -50,12 +50,12 @@ struct MetadataSearchTests {
         precondition(!cancelled, "Cancelled results must not reach the UI")
 
         let directory = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("ArgusMetadataFixture-" + UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("SearchBarMetadataFixture-" + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: directory) }
         let fixture = directory.appendingPathComponent("fulltext.txt")
         let attributes = directory.appendingPathComponent("attributes.plist")
-        let token = "ArgusMetadata" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        let token = "SearchBarMetadata" + UUID().uuidString.replacingOccurrences(of: "-", with: "")
         let text = String(repeating: "prefix body\n", count: 6000) +
             "\n\(token) tailtoken special\"quote literal*star marker?question slash\\path"
         try text.write(to: fixture, atomically: true, encoding: .utf8)

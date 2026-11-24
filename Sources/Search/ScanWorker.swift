@@ -181,7 +181,7 @@ enum ScanWorker {
 
 // The IO queue consumes bounded batches synchronously, so pipe backpressure bounds memory.
 final class ScanClient {
-    private let queue = DispatchQueue(label: "argus.scan.io", qos: .utility)
+    private let queue = DispatchQueue(label: "searchbar.scan.io", qos: .utility)
     private let lock = NSLock()
     private let idleTimeout: Double
     private var generation = 0

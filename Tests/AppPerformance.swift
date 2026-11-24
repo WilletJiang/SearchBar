@@ -7,7 +7,7 @@ final class AppPerformance {
     private let panel: PanelController
     private let index: FileIndex
     private let output: URL
-    private let queries = ["Safari", "Terminal", "Finder", "README", "swift", "Argus", "项目", "中文"]
+    private let queries = ["Safari", "Terminal", "Finder", "README", "swift", "SearchBar", "项目", "中文"]
     private let memory = BenchmarkMemory()
     private let started = ProcessInfo.processInfo.systemUptime
     private var position = 0

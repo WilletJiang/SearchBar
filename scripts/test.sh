@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 cd "${0:A:h:h}"
-TASK_TEST_DIR=$(mktemp -d /tmp/argus-tests.XXXXXX)
+TASK_TEST_DIR=$(mktemp -d /tmp/searchbar-tests.XXXXXX)
 trap 'rm -rf "$TASK_TEST_DIR"' EXIT
 TASK_C_SOURCES=(Sources/SearchCore/*.c)
 TASK_C_FLAGS=(-O2 -Wall -Wextra -Werror)

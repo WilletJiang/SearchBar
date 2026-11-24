@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <title>Argus</title>
-  <desc>A black three-line index mark on a white tile with large rounded corners.</desc>
-  <rect x="72" y="72" width="880" height="880" rx="220" fill="#FFFFFF" stroke="#E6E6E6" stroke-width="2"/>
-  <g fill="#000000">
-    <rect x="288" y="328" width="448" height="80" rx="40"/>
-    <rect x="288" y="472" width="448" height="80" rx="40"/>
-    <rect x="288" y="616" width="280" height="80" rx="40"/>
+  <title>SearchBar</title>
+  <desc>A faceted optical prism mark in deep forest green on a warm sage squircle tile.</desc>
+  <path d="M 296.00,72.00 L 728.00,72.00 C 853.44,72.00 952.00,170.56 952.00,296.00 L 952.00,728.00 C 952.00,853.44 853.44,952.00 728.00,952.00 L 296.00,952.00 C 170.56,952.00 72.00,853.44 72.00,728.00 L 72.00,296.00 C 72.00,170.56 170.56,72.00 296.00,72.00 Z" fill="#E4EADC" stroke="#D1DBC7" stroke-width="2.5"/>
+  <g transform="translate(248, 248) scale(22)" fill="none" stroke="#3D5439" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M 10.788,3.500 Q 12.000,2.800 13.212,3.500 L 18.755,6.700 Q 19.967,7.400 19.967,8.800 L 19.967,15.200 Q 19.967,16.600 18.755,17.300 L 13.212,20.500 Q 12.000,21.200 10.788,20.500 L 5.245,17.300 Q 4.033,16.600 4.033,15.200 L 4.033,8.800 Q 4.033,7.400 5.245,6.700 Z"/>
+    <path d="M 12,3.4 L 16.8,12 L 12,20.6"/>
+    <path d="M 4.4,7.8 L 16.8,12 L 4.4,16.2"/>
   </g>
 </svg>

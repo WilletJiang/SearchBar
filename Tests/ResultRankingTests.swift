@@ -4,7 +4,7 @@ import Foundation
 enum ResultRankingTests {
     static func main() {
         func hit(_ id: String, _ kind: SearchKind, _ score: Double, snippet: String = "") -> SearchResult {
-            SearchResult(id: id, title: id, subtitle: id, kind: kind, target: "/argus-test/" + id, score: score, snippet: snippet)
+            SearchResult(id: id, title: id, subtitle: id, kind: kind, target: "/searchbar-test/" + id, score: score, snippet: snippet)
         }
         let weak = hit("document", .file, 222)
         let metadata = hit("document", .content, 300, snippet: "Content match · System index")

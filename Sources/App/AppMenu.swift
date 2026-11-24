@@ -3,15 +3,15 @@ import AppKit
 enum AppMenu {
     static func install(target: NSObject, search: Selector, settings: Selector, quit: Selector) -> NSMenuItem {
         let bar = NSMenu()
-        let application = NSMenu(title: "Argus")
+        let application = NSMenu(title: "SearchBar")
         let toggle = application.addItem(withTitle: "Show / Hide Search", action: search, keyEquivalent: "")
         toggle.target = target
         let preferences = application.addItem(withTitle: "Settings…", action: settings, keyEquivalent: ",")
         preferences.target = target
         application.addItem(.separator())
-        let exit = application.addItem(withTitle: "Quit Argus", action: quit, keyEquivalent: "q")
+        let exit = application.addItem(withTitle: "Quit SearchBar", action: quit, keyEquivalent: "q")
         exit.target = target
-        let applicationItem = bar.addItem(withTitle: "Argus", action: nil, keyEquivalent: "")
+        let applicationItem = bar.addItem(withTitle: "SearchBar", action: nil, keyEquivalent: "")
         applicationItem.submenu = application
 
         let edit = NSMenu(title: "Edit")

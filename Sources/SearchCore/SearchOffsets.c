@@ -43,7 +43,7 @@ static void build_offsets(sqlite3_context *context, int count, sqlite3_value **v
     const char *text = (const char *)sqlite3_value_text(values[0]);
     if (!text) { sqlite3_result_error_nomem(context); return; }
     OffsetBuilder builder = {.position = -1};
-    int status = argus_tokenize_body(text, sqlite3_value_bytes(values[0]), &builder, record_offset);
+    int status = searchbar_tokenize_body(text, sqlite3_value_bytes(values[0]), &builder, record_offset);
     if (status != SQLITE_OK) {
         free(builder.data); sqlite3_result_error_code(context, status); return;
     }
@@ -52,8 +52,8 @@ static void build_offsets(sqlite3_context *context, int count, sqlite3_value **v
     } else sqlite3_result_blob(context, builder.data, builder.bytes, free);
 }
 
-int argus_register_offsets(sqlite3 *database) {
-    return sqlite3_create_function_v2(database, "argus_offsets", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+int searchbar_register_offsets(sqlite3 *database) {
+    return sqlite3_create_function_v2(database, "searchbar_offsets", 1, SQLITE_UTF8 | SQLITE_DETERMINISTIC,
                                       NULL, build_offsets, NULL, NULL, NULL);
 }
 
@@ -68,7 +68,7 @@ static int read_integer(const unsigned char **cursor, const unsigned char *end, 
     return 0;
 }
 
-int argus_excerpt_offset(const void *data, int bytes, int target) {
+int searchbar_excerpt_offset(const void *data, int bytes, int target) {
     if (!data || bytes < 0 || target < 0) return -1;
     const unsigned char *cursor = data, *end = cursor + bytes;
     unsigned position = 0, offset = 0;
@@ -85,7 +85,7 @@ int argus_excerpt_offset(const void *data, int bytes, int target) {
     return selected;
 }
 
-void argus_excerpt_text(char output[512], const char *text, int bytes, int byte_offset) {
+void searchbar_excerpt_text(char output[512], const char *text, int bytes, int byte_offset) {
     int start = byte_offset > 80 ? byte_offset - 80 : 0;
     if (start > bytes) start = bytes;
     while (start && start < bytes && ((unsigned char)text[start] & 0xc0) == 0x80) --start;

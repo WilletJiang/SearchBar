@@ -3,7 +3,7 @@ import AppKit
 enum AppearanceMode: Int, CaseIterable {
     case adaptive, light, dark
 
-    static let didChange = Notification.Name("ArgusAppearanceDidChange")
+    static let didChange = Notification.Name("SearchBarAppearanceDidChange")
 
     var title: String {
         switch self {

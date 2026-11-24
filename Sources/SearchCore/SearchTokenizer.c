@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-uint32_t argus_codepoint(const char *text, int bytes, int *width) {
+uint32_t searchbar_codepoint(const char *text, int bytes, int *width) {
     unsigned char c = (unsigned char)text[0];
     if (c < 0x80) { *width = 1; return c; }
     int n = c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4;
@@ -22,21 +22,21 @@ uint32_t argus_codepoint(const char *text, int bytes, int *width) {
     return point;
 }
 
-int argus_token_character(uint32_t point) {
+int searchbar_token_character(uint32_t point) {
     if (point < 128) return isalnum((unsigned char)point) || point == '_';
     if (point == 0xfffd) return 0;
     return CFCharacterSetIsLongCharacterMember(
         CFCharacterSetGetPredefined(kCFCharacterSetAlphaNumeric), point);
 }
 
-int argus_cjk_character(uint32_t point) {
+int searchbar_cjk_character(uint32_t point) {
     return (point >= 0x3400 && point <= 0x9fff) ||
            (point >= 0x20000 && point <= 0x323af) ||
            (point >= 0x3040 && point <= 0x30ff) ||
            (point >= 0xac00 && point <= 0xd7af);
 }
 
-char *argus_fold_text(const char *text) {
+char *searchbar_fold_text(const char *text) {
     if (!text) text = "";
     size_t bytes = strlen(text);
     int ascii = 1;
@@ -87,14 +87,14 @@ static int tokenize(Fts5Tokenizer *tokenizer, void *context, int flags,
     int offset = 0;
     while (offset < bytes) {
         int width;
-        uint32_t point = argus_codepoint(text + offset, bytes - offset, &width);
-        if (!argus_token_character(point)) { offset += width; continue; }
+        uint32_t point = searchbar_codepoint(text + offset, bytes - offset, &width);
+        if (!searchbar_token_character(point)) { offset += width; continue; }
         int start = offset;
         int has_cjk = 0, has_nonascii = 0;
         while (offset < bytes) {
-            point = argus_codepoint(text + offset, bytes - offset, &width);
-            if (!argus_token_character(point)) break;
-            has_cjk |= argus_cjk_character(point);
+            point = searchbar_codepoint(text + offset, bytes - offset, &width);
+            if (!searchbar_token_character(point)) break;
+            has_cjk |= searchbar_cjk_character(point);
             has_nonascii |= point >= 128;
             offset += width;
         }
@@ -107,7 +107,7 @@ static int tokenize(Fts5Tokenizer *tokenizer, void *context, int flags,
             char *word = length < (int)sizeof(word_stack) ? word_stack : malloc((size_t)length + 1);
             if (!word) return SQLITE_NOMEM;
             memcpy(word, text + start, (size_t)length); word[length] = 0;
-            folded_heap = argus_fold_text(word);
+            folded_heap = searchbar_fold_text(word);
             if (word != word_stack) free(word);
             if (!folded_heap) return SQLITE_NOMEM;
             folded = folded_heap;
@@ -117,8 +117,8 @@ static int tokenize(Fts5Tokenizer *tokenizer, void *context, int flags,
             int current = 0;
             while (current < folded_length) {
                 int character_width;
-                uint32_t folded_point = argus_codepoint(folded + current, folded_length - current, &character_width);
-                has_cjk |= argus_cjk_character(folded_point);
+                uint32_t folded_point = searchbar_codepoint(folded + current, folded_length - current, &character_width);
+                has_cjk |= searchbar_cjk_character(folded_point);
                 current += character_width;
             }
         }
@@ -135,10 +135,10 @@ static int tokenize(Fts5Tokenizer *tokenizer, void *context, int flags,
             int current = 0;
             while (current < folded_length) {
                 int width;
-                uint32_t point = argus_codepoint(folded + current, folded_length - current, &width);
+                uint32_t point = searchbar_codepoint(folded + current, folded_length - current, &width);
                 int next = current + width;
                 int flags = current == 0 ? FTS5_TOKEN_COLOCATED : 0;
-                if (argus_cjk_character(point)) {
+                if (searchbar_cjk_character(point)) {
                     token[0] = 'u';
                     memcpy(token + 1, folded + current, (size_t)width);
                     result = emit(context, flags, token, width + 1, start, offset);
@@ -147,12 +147,12 @@ static int tokenize(Fts5Tokenizer *tokenizer, void *context, int flags,
                 }
                 if (next < folded_length) {
                     int second;
-                    argus_codepoint(folded + next, folded_length - next, &second);
+                    searchbar_codepoint(folded + next, folded_length - next, &second);
                     token[0] = 'b';
                     memcpy(token + 1, folded + current, (size_t)(width + second));
                     result = emit(context, flags, token, width + second + 1, start, offset);
                     if (result != SQLITE_OK) break;
-                } else if (!argus_cjk_character(point)) {
+                } else if (!searchbar_cjk_character(point)) {
                     /* Retain the final character position across a following word boundary. */
                     token[0] = 'x';
                     result = emit(context, flags, token, 1, start, offset);
@@ -165,8 +165,8 @@ static int tokenize(Fts5Tokenizer *tokenizer, void *context, int flags,
                 int current = 0;
                 while (current < folded_length) {
                     int width;
-                    uint32_t point = argus_codepoint(folded + current, folded_length - current, &width);
-                    if (argus_cjk_character(point)) {
+                    uint32_t point = searchbar_codepoint(folded + current, folded_length - current, &width);
+                    if (searchbar_cjk_character(point)) {
                         token[0] = 'u'; memcpy(token + 1, folded + current, (size_t)width);
                         result = emit(context, FTS5_TOKEN_COLOCATED, token, width + 1, start, offset);
                         if (result != SQLITE_OK) break;
@@ -178,10 +178,10 @@ static int tokenize(Fts5Tokenizer *tokenizer, void *context, int flags,
                 int current = 0;
                 while (current < folded_length) {
                     int first, second;
-                    argus_codepoint(folded + current, folded_length - current, &first);
+                    searchbar_codepoint(folded + current, folded_length - current, &first);
                     int next = current + first;
                     if (next >= folded_length) break;
-                    argus_codepoint(folded + next, folded_length - next, &second);
+                    searchbar_codepoint(folded + next, folded_length - next, &second);
                     token[0] = 'b';
                     memcpy(token + 1, folded + current, (size_t)(first + second));
                     result = emit(context, FTS5_TOKEN_COLOCATED, token, first + second + 1,
@@ -198,7 +198,7 @@ static int tokenize(Fts5Tokenizer *tokenizer, void *context, int flags,
     return SQLITE_OK;
 }
 
-int argus_tokenize_body(const char *text, int bytes, void *context,
+int searchbar_tokenize_body(const char *text, int bytes, void *context,
                        int (*emit)(void *, int, const char *, int, int, int)) {
     int mode = 2;
     return tokenize((Fts5Tokenizer *)&mode, context, FTS5_TOKENIZE_DOCUMENT, text, bytes, emit);
@@ -247,11 +247,11 @@ static void excerpt(const Fts5ExtensionApi *api, Fts5Context *fts, sqlite3_conte
         sqlite3_result_error_code(result, status); return;
     }
     char output[512];
-    argus_excerpt_text(output, text, bytes, position.byte_offset);
+    searchbar_excerpt_text(output, text, bytes, position.byte_offset);
     sqlite3_result_text(result, output, -1, SQLITE_TRANSIENT);
 }
 
-int argus_register_tokenizers(sqlite3 *database) {
+int searchbar_register_tokenizers(sqlite3 *database) {
     fts5_api *api = NULL;
     sqlite3_stmt *statement = NULL;
     int result = sqlite3_prepare_v2(database, "SELECT fts5(?1)", -1, &statement, NULL);
@@ -261,14 +261,14 @@ int argus_register_tokenizers(sqlite3 *database) {
     sqlite3_finalize(statement);
     if (!api) return SQLITE_ERROR;
     fts5_tokenizer tokenizer = {tokenizer_create, tokenizer_delete, tokenize};
-    result = api->xCreateTokenizer(api, "argus_meta", NULL, &tokenizer, NULL);
+    result = api->xCreateTokenizer(api, "searchbar_meta", NULL, &tokenizer, NULL);
     if (result != SQLITE_OK) return result;
-    result = api->xCreateTokenizer(api, "argus_body", (void *)1, &tokenizer, NULL);
+    result = api->xCreateTokenizer(api, "searchbar_body", (void *)1, &tokenizer, NULL);
     if (result != SQLITE_OK) return result;
-    result = api->xCreateTokenizer(api, "argus_body_v2", (void *)2, &tokenizer, NULL);
+    result = api->xCreateTokenizer(api, "searchbar_body_v2", (void *)2, &tokenizer, NULL);
     if (result != SQLITE_OK) return result;
-    result = api->xCreateFunction(api, "argus_position", NULL, match_position, NULL);
+    result = api->xCreateFunction(api, "searchbar_position", NULL, match_position, NULL);
     if (result != SQLITE_OK) return result;
-    result = api->xCreateFunction(api, "argus_excerpt", NULL, excerpt, NULL);
-    return result == SQLITE_OK ? argus_register_offsets(database) : result;
+    result = api->xCreateFunction(api, "searchbar_excerpt", NULL, excerpt, NULL);
+    return result == SQLITE_OK ? searchbar_register_offsets(database) : result;
 }

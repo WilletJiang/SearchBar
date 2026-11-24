@@ -64,7 +64,7 @@ enum ObserveFrames {
         config.colorSpaceName = CGColorSpace.sRGB
         let observer = try FrameObserver(path: args[2])
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
-        try stream.addStreamOutput(observer, type: .screen, sampleHandlerQueue: DispatchQueue(label: "argus.frame.observer"))
+        try stream.addStreamOutput(observer, type: .screen, sampleHandlerQueue: DispatchQueue(label: "searchbar.frame.observer"))
         try await stream.startCapture()
         try Data().write(to: URL(fileURLWithPath: args[2] + ".ready"))
         while kill(pid, 0) == 0 { try await Task.sleep(for: .milliseconds(200)) }
