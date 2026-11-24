@@ -31,7 +31,7 @@ final class SystemProviders {
 
     private let queue: OperationQueue = {
         let queue = OperationQueue()
-        queue.name = "Argus.system-search"
+        queue.name = "SearchBar.system-search"
         queue.qualityOfService = .userInitiated
         queue.maxConcurrentOperationCount = 1
         return queue
@@ -91,7 +91,7 @@ final class SystemProviders {
             self.queue.addOperation {
                 self.refreshContacts {
                     let message = granted ? "Contacts access enabled. \(self.contacts.count) contacts loaded." :
-                        (error?.localizedDescription ?? "Contacts access denied. Allow Argus in System Settings → Privacy & Security → Contacts.")
+                        (error?.localizedDescription ?? "Contacts access denied. Allow SearchBar in System Settings → Privacy & Security → Contacts.")
                     DispatchQueue.main.async { completion(message) }
                 }
             }
@@ -181,7 +181,7 @@ final class SystemProviders {
             let authorization = CNContactStore.authorizationStatus(for: .contacts)
             lock.lock()
             contactStatus = authorization == .denied || authorization == .restricted ?
-                "Contacts: allow access in System Settings → Privacy & Security → Contacts" : "Contacts: enable access in Argus Settings"
+                "Contacts: allow access in System Settings → Privacy & Security → Contacts" : "Contacts: enable access in SearchBar Settings"
             lock.unlock()
             finishContactRefresh()
             return
@@ -400,12 +400,12 @@ final class SystemProviders {
         let actions: [(String, String, String, String, String)] = [
             ("System Settings", "Open System Settings", "/System/Applications/System Settings.app", "系统设置 设置 settings preferences", "gearshape"),
             ("Screenshot & Recording", "Open the system screenshot tool", "/System/Applications/Utilities/Screenshot.app", "截图与录屏 截图 截屏 录屏 screenshot capture recording", "camera"),
-            ("Toggle Dark Mode", "Switch between light and dark mode", "argus-action:appearance", "切换深色外观 深色 浅色 外观 dark light appearance mode", "moon.fill"),
-            ("Volume Up", "Increase volume by 10%", "argus-action:volume-up", "调高音量 增加音量 volume up louder", "speaker.wave.3.fill"),
-            ("Volume Down", "Decrease volume by 10%", "argus-action:volume-down", "调低音量 降低音量 volume down quieter", "speaker.wave.1.fill"),
-            ("Toggle Mute", "Toggle system audio mute", "argus-action:mute", "切换静音 静音 mute unmute sound", "speaker.slash.fill"),
-            ("Sleep Display", "Put the display to sleep", "argus-action:display-sleep", "关闭显示器 屏幕睡眠 screen display sleep", "display"),
-            ("Sleep", "Put this Mac to sleep", "argus-action:sleep", "睡眠 休眠 sleep suspend", "moon.zzz.fill"),
+            ("Toggle Dark Mode", "Switch between light and dark mode", "searchbar-action:appearance", "切换深色外观 深色 浅色 外观 dark light appearance mode", "moon.fill"),
+            ("Volume Up", "Increase volume by 10%", "searchbar-action:volume-up", "调高音量 增加音量 volume up louder", "speaker.wave.3.fill"),
+            ("Volume Down", "Decrease volume by 10%", "searchbar-action:volume-down", "调低音量 降低音量 volume down quieter", "speaker.wave.1.fill"),
+            ("Toggle Mute", "Toggle system audio mute", "searchbar-action:mute", "切换静音 静音 mute unmute sound", "speaker.slash.fill"),
+            ("Sleep Display", "Put the display to sleep", "searchbar-action:display-sleep", "关闭显示器 屏幕睡眠 screen display sleep", "display"),
+            ("Sleep", "Put this Mac to sleep", "searchbar-action:sleep", "睡眠 休眠 sleep suspend", "moon.zzz.fill"),
             ("Wi-Fi Settings", "Open Wi-Fi Settings", "x-apple.systempreferences:com.apple.wifi-settings-extension", "Wi-Fi 设置 无线 网络 wifi wireless", "wifi"),
             ("Bluetooth Settings", "Open Bluetooth Settings", "x-apple.systempreferences:com.apple.BluetoothSettings", "蓝牙设置 蓝牙 bluetooth", "antenna.radiowaves.left.and.right"),
             ("Display Settings", "Open Display Settings", "x-apple.systempreferences:com.apple.Displays-Settings.extension", "显示器设置 显示器 分辨率 亮度 display resolution brightness", "display"),

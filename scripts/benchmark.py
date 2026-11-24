@@ -13,7 +13,7 @@ import tarfile
 import tempfile
 
 REPO = Path(__file__).resolve().parents[1]
-QUERIES = ["Safari", "Terminal", "README", "swift", "项目", "中文", "orbital", "Argus"]
+QUERIES = ["Safari", "Terminal", "README", "swift", "项目", "中文", "orbital", "SearchBar"]
 
 
 def run(arguments, **kwargs):
@@ -105,11 +105,11 @@ def prepare_sources(root, baseline_ref):
     index = baseline / "Sources/Search/FileIndex.swift"
     text = index.read_text()
     if "func prepareBenchmarkIndex()" not in text:
-        hook = """#if ARGUS_BENCHMARK
+        hook = """#if SEARCHBAR_BENCHMARK
     func prepareBenchmarkIndex() {
         writerQueue.async {
             guard let writer = self.writer else { return }
-            self.report("Index ready · frozen benchmark corpus", Int(argus_index_count(writer)))
+            self.report("Index ready · frozen benchmark corpus", Int(searchbar_index_count(writer)))
         }
     }
 #endif
@@ -131,7 +131,7 @@ def main():
     if args.files < 1:
         parser.error("--files must be positive")
     temporary_parent = Path(subprocess.check_output(["getconf", "DARWIN_USER_TEMP_DIR"], text=True).strip()).resolve()
-    with tempfile.TemporaryDirectory(prefix="argus-performance-", dir=temporary_parent) as folder:
+    with tempfile.TemporaryDirectory(prefix="searchbar-performance-", dir=temporary_parent) as folder:
         root = Path(folder)
         sources = prepare_sources(root, args.baseline_ref)
         engines = {}
@@ -162,7 +162,7 @@ def main():
         # Reverse order reduces a systematic advantage from running second.
         for version in ["optimized", "baseline"]:
             print("Measuring", version, "native UI", flush=True)
-            app = sources[version] / "dist/Argus.app/Contents/MacOS/Argus"
+            app = sources[version] / "dist/SearchBar.app/Contents/MacOS/SearchBar"
             report["ui"][version] = measure_app(app, root / (version + "-corpus"), root / (version + "-ui.json"), observer=observer)
         home = root / "fixture-home"; home.mkdir()
         body = ("年度项目 预算 SearchFixtureText 中文全文测试 Cafe résumé orbital align.\n" * 2).encode()
@@ -173,7 +173,7 @@ def main():
         report["build_fixture"] = {"files": args.files, "directories": math.ceil(args.files / 100), "body_bytes_per_file": len(body)}
         for version in sources:
             print("Measuring", version, "full index build", flush=True)
-            app = sources[version] / "dist/Argus.app/Contents/MacOS/Argus"
+            app = sources[version] / "dist/SearchBar.app/Contents/MacOS/SearchBar"
             value = measure_app(app, root / (version + "-build"), root / (version + "-build.json"), home=home)
             if value["indexed_rows"] != args.files + math.ceil(args.files / 100):
                 raise RuntimeError("Scan policy excluded benchmark data")

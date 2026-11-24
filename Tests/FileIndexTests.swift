@@ -25,7 +25,7 @@ enum FileIndexTests {
         let resolved = realpath(FileManager.default.temporaryDirectory.path, nil)!
         let temporary = URL(fileURLWithPath: String(cString: resolved))
         free(resolved)
-        let fixture = temporary.appendingPathComponent("argus-index-test-" + UUID().uuidString)
+        let fixture = temporary.appendingPathComponent("searchbar-index-test-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
         let root = fixture.resolvingSymlinksInPath()
         let home = root.appendingPathComponent("home"), apps = root.appendingPathComponent("Applications"), storage = root.appendingPathComponent("database")
@@ -45,7 +45,7 @@ enum FileIndexTests {
         precondition(ContentExtractor.extract(unicode).contains("你好🧭"))
         let realApp = root.appendingPathComponent("Safari.app/Contents")
         try FileManager.default.createDirectory(at: realApp, withIntermediateDirectories: true)
-        let plist: [String: Any] = ["CFBundleName": "Safari", "CFBundleIdentifier": "test.argus.safari", "CFBundlePackageType": "APPL"]
+        let plist: [String: Any] = ["CFBundleName": "Safari", "CFBundleIdentifier": "test.searchbar.safari", "CFBundlePackageType": "APPL"]
         try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0).write(to: realApp.appendingPathComponent("Info.plist"))
         let link = apps.appendingPathComponent("Safari.app")
         try FileManager.default.createSymbolicLink(at: link, withDestinationURL: realApp.deletingLastPathComponent())

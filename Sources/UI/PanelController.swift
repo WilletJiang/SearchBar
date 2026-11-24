@@ -31,7 +31,7 @@ final class PanelController: NSObject, NSSearchFieldDelegate, NSTableViewDataSou
     private var hasReceivedQueryResults = false
     private var selectedResultID: String?
     private var settingSelection = false
-    #if ARGUS_BENCHMARK
+    #if SEARCHBAR_BENCHMARK
     private var queryStarted = 0.0
     var onMetric: ((String, Double) -> Void)?
     #endif
@@ -64,7 +64,7 @@ final class PanelController: NSObject, NSSearchFieldDelegate, NSTableViewDataSou
     }
 
     func show(query: String? = nil) {
-        #if ARGUS_BENCHMARK
+        #if SEARCHBAR_BENCHMARK
         let started = ProcessInfo.processInfo.systemUptime
         #endif
         let preservesSelection = (query == nil || query == typedQuery) && scope == .all
@@ -96,7 +96,7 @@ final class PanelController: NSObject, NSSearchFieldDelegate, NSTableViewDataSou
                 self.motion.present(true, height: self.targetHeight)
             }
         }
-        #if ARGUS_BENCHMARK
+        #if SEARCHBAR_BENCHMARK
         queryStarted = started
         onMetric?("showReadyMs", (ProcessInfo.processInfo.systemUptime - started) * 1000)
         #endif
@@ -104,7 +104,7 @@ final class PanelController: NSObject, NSSearchFieldDelegate, NSTableViewDataSou
 
     func toggle() { isPresented ? hide() : show() }
 
-    #if ARGUS_BENCHMARK
+    #if SEARCHBAR_BENCHMARK
     func setBenchmarkQuery(_ query: String) {
         let started = ProcessInfo.processInfo.systemUptime
         setQuery(query)
@@ -258,7 +258,7 @@ final class PanelController: NSObject, NSSearchFieldDelegate, NSTableViewDataSou
             surface.scroll.isHidden = false
         }
         resize()
-        #if ARGUS_BENCHMARK
+        #if SEARCHBAR_BENCHMARK
         queryStarted = ProcessInfo.processInfo.systemUptime
         #endif
         coordinator.search(typedQuery, scope: scope)
@@ -272,7 +272,7 @@ final class PanelController: NSObject, NSSearchFieldDelegate, NSTableViewDataSou
             return
         }
         emptyWork?.cancel(); emptyWork = nil
-        #if ARGUS_BENCHMARK
+        #if SEARCHBAR_BENCHMARK
         let updateStart = ProcessInfo.processInfo.systemUptime
         #endif
         let ordered = hasReceivedQueryResults ? ResultRanking.stabilized(values, after: results) : values
@@ -284,7 +284,7 @@ final class PanelController: NSObject, NSSearchFieldDelegate, NSTableViewDataSou
         updateFooter()
         resize()
         refreshCompletion()
-        #if ARGUS_BENCHMARK
+        #if SEARCHBAR_BENCHMARK
         if queryStarted > 0 {
             onMetric?("resultUpdateMs", (ProcessInfo.processInfo.systemUptime - updateStart) * 1000)
             onMetric?("engineSearchMs", milliseconds)

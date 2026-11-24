@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleName</key><string>Argus</string>
-<key>CFBundleDisplayName</key><string>Argus</string>
-<key>CFBundleIdentifier</key><string>dev.argus.search</string>
-<key>CFBundleExecutable</key><string>Argus</string>
+<key>CFBundleName</key><string>SearchBar</string>
+<key>CFBundleDisplayName</key><string>SearchBar</string>
+<key>CFBundleIdentifier</key><string>dev.searchbar.app</string>
+<key>CFBundleExecutable</key><string>SearchBar</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>1.0.5</string>
 <key>CFBundleVersion</key><string>8</string>
@@ -12,6 +12,6 @@
 <key>LSMinimumSystemVersion</key><string>26.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSContactsUsageDescription</key><string>Argus searches contact names and details on this Mac. Contact data is never uploaded.</string>
-<key>NSAppleEventsUsageDescription</key><string>Argus controls system settings only when you run a system action.</string>
+<key>NSContactsUsageDescription</key><string>SearchBar searches contact names and details on this Mac. Contact data is never uploaded.</string>
+<key>NSAppleEventsUsageDescription</key><string>SearchBar controls system settings only when you run a system action.</string>
 </dict></plist>

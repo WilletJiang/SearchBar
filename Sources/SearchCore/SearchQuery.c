@@ -6,9 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-int argus_query_parse(SearchQuery *query, const char *text) {
+int searchbar_query_parse(SearchQuery *query, const char *text) {
     memset(query, 0, sizeof(*query));
-    char *folded = argus_fold_text(text);
+    char *folded = searchbar_fold_text(text);
     if (!folded) return 0;
     size_t bytes = strlen(folded);
     if (bytes >= sizeof(query->text)) { free(folded); return 0; }
@@ -16,21 +16,21 @@ int argus_query_parse(SearchQuery *query, const char *text) {
     memcpy(query->prefix, folded, bytes + 1);
     free(folded);
     char *current = query->text;
-    while (*current && query->count < ARGUS_MAX_TERMS) {
+    while (*current && query->count < SEARCHBAR_MAX_TERMS) {
         int width;
-        if (!argus_token_character(argus_codepoint(current, (int)strlen(current), &width))) {
+        if (!searchbar_token_character(searchbar_codepoint(current, (int)strlen(current), &width))) {
             memset(current, 0, (size_t)width); current += width; continue;
         }
         query->terms[query->count++] = current;
         while (*current) {
-            uint32_t point = argus_codepoint(current, (int)strlen(current), &width);
-            if (!argus_token_character(point)) { memset(current, 0, (size_t)width); current += width; break; }
+            uint32_t point = searchbar_codepoint(current, (int)strlen(current), &width);
+            if (!searchbar_token_character(point)) { memset(current, 0, (size_t)width); current += width; break; }
             current += width;
         }
     }
     while (*current) {
         int width;
-        if (argus_token_character(argus_codepoint(current, (int)strlen(current), &width))) return 0;
+        if (searchbar_token_character(searchbar_codepoint(current, (int)strlen(current), &width))) return 0;
         current += width;
     }
     return 1;
@@ -50,14 +50,14 @@ static char *match_expression(SearchQuery *query, int body, int fuzzy, int posit
         if (t) sqlite3_str_appendall(builder, " AND ");
         const char *term = query->terms[t];
         int bytes = (int)strlen(term), width;
-        uint32_t first = argus_codepoint(term, bytes, &width);
+        uint32_t first = searchbar_codepoint(term, bytes, &width);
         if (fuzzy) {
             sqlite3_str_appendchar(builder, 1, '(');
             append_token(builder, 'w', term, width, 1);
             int previous = 0, offset = 0, characters = 0;
             while (offset < bytes) {
                 int character_width;
-                argus_codepoint(term + offset, bytes - offset, &character_width);
+                searchbar_codepoint(term + offset, bytes - offset, &character_width);
                 if (offset + character_width < bytes) previous = offset;
                 offset += character_width; ++characters;
             }
@@ -66,9 +66,9 @@ static char *match_expression(SearchQuery *query, int body, int fuzzy, int posit
                 append_token(builder, 'b', term + previous, bytes - previous, 0);
             }
             sqlite3_str_appendchar(builder, 1, ')');
-        } else if (bytes == width && argus_cjk_character(first)) {
+        } else if (bytes == width && searchbar_cjk_character(first)) {
             append_token(builder, 'u', term, bytes, 0);
-        } else if (bytes == width || (body && !argus_cjk_character(first))) {
+        } else if (bytes == width || (body && !searchbar_cjk_character(first))) {
             append_token(builder, 'w', term, bytes, 1);
         } else {
             int offset = 0, emitted = 0;
@@ -77,10 +77,10 @@ static char *match_expression(SearchQuery *query, int body, int fuzzy, int posit
                ranking validates every complete term after candidate retrieval. */
             while (offset < bytes && (positional || emitted < 24)) {
                 int first_width, second_width;
-                argus_codepoint(term + offset, bytes - offset, &first_width);
+                searchbar_codepoint(term + offset, bytes - offset, &first_width);
                 int next = offset + first_width;
                 if (next >= bytes) break;
-                argus_codepoint(term + next, bytes - next, &second_width);
+                searchbar_codepoint(term + next, bytes - next, &second_width);
                 if (emitted++) sqlite3_str_appendall(builder, positional ? " + " : " AND ");
                 append_token(builder, 'b', term + offset, first_width + second_width, 0);
                 offset = next;
@@ -92,11 +92,11 @@ static char *match_expression(SearchQuery *query, int body, int fuzzy, int posit
     return sqlite3_str_finish(builder);
 }
 
-char *argus_query_match(SearchQuery *query, int body, int fuzzy) {
+char *searchbar_query_match(SearchQuery *query, int body, int fuzzy) {
     return match_expression(query, body, fuzzy, 0);
 }
 
-char *argus_query_body_expression(SearchQuery *query, int positional) {
+char *searchbar_query_body_expression(SearchQuery *query, int positional) {
     return match_expression(query, 1, 0, positional);
 }
 
@@ -104,7 +104,7 @@ static int codepoints(const char *text, uint32_t *out, int capacity) {
     int count = 0, bytes = (int)strlen(text), offset = 0;
     while (offset < bytes && count < capacity) {
         int width;
-        out[count++] = argus_codepoint(text + offset, bytes - offset, &width);
+        out[count++] = searchbar_codepoint(text + offset, bytes - offset, &width);
         offset += width;
     }
     return offset == bytes ? count : -1;
@@ -143,11 +143,11 @@ static double fuzzy_term(const char *term, const char *text) {
     int bytes = (int)strlen(text), offset = 0;
     while (offset < bytes) {
         int width;
-        if (!argus_token_character(argus_codepoint(text + offset, bytes - offset, &width))) {
+        if (!searchbar_token_character(searchbar_codepoint(text + offset, bytes - offset, &width))) {
             offset += width; continue;
         }
         int start = offset;
-        while (offset < bytes && argus_token_character(argus_codepoint(text + offset, bytes - offset, &width)))
+        while (offset < bytes && searchbar_token_character(searchbar_codepoint(text + offset, bytes - offset, &width)))
             offset += width;
         int distance = edit_distance(term, text + start, offset - start);
         if (distance <= 2) {
@@ -177,13 +177,13 @@ static double term_score(const char *term, const char *text, double weight) {
     const char *found = strstr(text, term);
     if (!found) return 0;
     size_t length = strlen(term);
-    int boundary = found == text || !argus_token_character((unsigned char)found[-1]);
-    int end = !found[length] || !argus_token_character((unsigned char)found[length]);
+    int boundary = found == text || !searchbar_token_character((unsigned char)found[-1]);
+    int end = !found[length] || !searchbar_token_character((unsigned char)found[length]);
     return weight + (boundary ? 15 : 0) + (boundary && end ? 10 : 0) -
            fmin((double)(found - text) * 0.05, 8.0);
 }
 
-double argus_query_score(SearchQuery *query, const char *name, const char *path,
+double searchbar_query_score(SearchQuery *query, const char *name, const char *path,
                              const char *aliases, int fuzzy) {
     double sum = 0;
     int was_fuzzy = 0;
@@ -215,13 +215,13 @@ double argus_query_score(SearchQuery *query, const char *name, const char *path,
     return score - fmin((double)strlen(name) * 0.025, 8.0);
 }
 
-int argus_query_body_matches(SearchQuery *query, const char *body) {
+int searchbar_query_body_matches(SearchQuery *query, const char *body) {
     char *folded = NULL;
     for (int t = 0; t < query->count; ++t) {
         int width;
-        if (!argus_cjk_character(argus_codepoint(query->terms[t], (int)strlen(query->terms[t]), &width))) continue;
+        if (!searchbar_cjk_character(searchbar_codepoint(query->terms[t], (int)strlen(query->terms[t]), &width))) continue;
         if (!folded) {
-            folded = argus_fold_text(body);
+            folded = searchbar_fold_text(body);
             if (!folded) return -1;
         }
         if (!strstr(folded, query->terms[t])) { free(folded); return 0; }

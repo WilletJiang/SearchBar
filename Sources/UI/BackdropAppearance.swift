@@ -6,7 +6,7 @@ import OSLog
 /// No persistent capture stream, application exclusion filter, or cross-Space cache is needed.
 final class BackdropAppearance {
     typealias Capture = (CGRect, @escaping (CGImage?, Error?) -> Void) -> Void
-    private static let log = Logger(subsystem: "dev.argus.search", category: "appearance")
+    private static let log = Logger(subsystem: "dev.searchbar.app", category: "appearance")
     private weak var panel: NSPanel?
     private weak var shape: NSView?
     private let capture: Capture

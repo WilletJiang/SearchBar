@@ -138,7 +138,7 @@ enum PanelPresentationTests {
         AppearanceTests.run()
         Preferences.shared.appearanceMode = .light
         AppearanceMode.light.apply()
-        let fixture = FileManager.default.temporaryDirectory.appendingPathComponent("argus-presentation-" + UUID().uuidString)
+        let fixture = FileManager.default.temporaryDirectory.appendingPathComponent("searchbar-presentation-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: fixture) }
         let index = FileIndex(home: fixture, storage: fixture.appendingPathComponent("index"), applications: [])
@@ -508,7 +508,7 @@ enum PanelPresentationTests {
         controller.show(query: "deferred")
         check(controller.control(controller.field, textView: typing, doCommandBy: #selector(NSResponder.insertNewline(_:))))
         check(controller.isPresented, "Return before any result must wait instead of opening stale rows")
-        publish([hit("Deferred", kind: .action, target: "argus-action:unsupported-test")], 1)
+        publish([hit("Deferred", kind: .action, target: "searchbar-action:unsupported-test")], 1)
         check(!controller.isPresented && !window.isVisible, "The deferred Return opens the first result and hides immediately")
         wait(0.1)
         controller.hide(immediately: true)

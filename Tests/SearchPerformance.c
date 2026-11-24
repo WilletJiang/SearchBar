@@ -28,26 +28,26 @@ int main(int argc, char **argv) {
     if (argc < 4) { fprintf(stderr, "Usage: search-performance LIBRARY DATABASE QUERY...\n"); return 1; }
     void *library = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
     if (!library) { fprintf(stderr, "%s\n", dlerror()); return 1; }
-    ArgusIndex *(*open_index)(const char *) = dlsym(library, "argus_index_open");
-    void (*close_index)(ArgusIndex *) = dlsym(library, "argus_index_close");
-    const char *(*error)(ArgusIndex *) = dlsym(library, "argus_index_error");
-    int (*upgrade)(ArgusIndex *) = dlsym(library, "argus_index_upgrade");
-    int (*prepare)(ArgusIndex *) = dlsym(library, "argus_index_prepare_snapshot");
-    int (*metadata)(ArgusIndex *, const char *, int, int, ArgusHit *) = dlsym(library, "argus_index_search_metadata");
-    int (*full)(ArgusIndex *, const char *, int, int, ArgusHit *) = dlsym(library, "argus_index_search");
-    ArgusSearch *(*open_search)(ArgusIndex *, const char *, int, int) = dlsym(library, "argus_search_open");
-    int (*search_metadata)(ArgusSearch *) = dlsym(library, "argus_search_metadata");
-    int (*complete)(ArgusSearch *) = dlsym(library, "argus_search_complete");
-    int (*finished)(ArgusSearch *) = dlsym(library, "argus_search_finished");
-    int (*read_result)(ArgusSearch *, int, ArgusResult *) = dlsym(library, "argus_search_read");
-    void (*close_search)(ArgusSearch *) = dlsym(library, "argus_search_close");
-    ArgusIndex *index = open_index(argv[2]);
+    SearchBarIndex *(*open_index)(const char *) = dlsym(library, "searchbar_index_open");
+    void (*close_index)(SearchBarIndex *) = dlsym(library, "searchbar_index_close");
+    const char *(*error)(SearchBarIndex *) = dlsym(library, "searchbar_index_error");
+    int (*upgrade)(SearchBarIndex *) = dlsym(library, "searchbar_index_upgrade");
+    int (*prepare)(SearchBarIndex *) = dlsym(library, "searchbar_index_prepare_snapshot");
+    int (*metadata)(SearchBarIndex *, const char *, int, int, SearchBarHit *) = dlsym(library, "searchbar_index_search_metadata");
+    int (*full)(SearchBarIndex *, const char *, int, int, SearchBarHit *) = dlsym(library, "searchbar_index_search");
+    SearchBarSearch *(*open_search)(SearchBarIndex *, const char *, int, int) = dlsym(library, "searchbar_search_open");
+    int (*search_metadata)(SearchBarSearch *) = dlsym(library, "searchbar_search_metadata");
+    int (*complete)(SearchBarSearch *) = dlsym(library, "searchbar_search_complete");
+    int (*finished)(SearchBarSearch *) = dlsym(library, "searchbar_search_finished");
+    int (*read_result)(SearchBarSearch *, int, SearchBarResult *) = dlsym(library, "searchbar_search_read");
+    void (*close_search)(SearchBarSearch *) = dlsym(library, "searchbar_search_close");
+    SearchBarIndex *index = open_index(argv[2]);
     if (!index) return 1;
     if (upgrade && !upgrade(index)) { fprintf(stderr, "%s\n", error(index)); return 1; }
     double start = now();
     int prepared = prepare ? prepare(index) : 0;
     fprintf(stderr, "Snapshot prepare %.3fs (%d)\n", now() - start, prepared);
-    ArgusHit *hits = calloc(48, sizeof(*hits));
+    SearchBarHit *hits = calloc(48, sizeof(*hits));
     if (!hits) return 1;
     puts("[");
     for (int q = 3; q < argc; ++q) {
@@ -55,9 +55,9 @@ int main(int argc, char **argv) {
         for (int repetition = -10; repetition < 100; ++repetition) {
             start = now(); double first_end;
             if (open_search) {
-                ArgusSearch *search = open_search(index, argv[q], -1, 48);
+                SearchBarSearch *search = open_search(index, argv[q], -1, 48);
                 if (!search) return 1;
-                count = search_metadata(search); ArgusResult result;
+                count = search_metadata(search); SearchBarResult result;
                 for (int i = 0; i < count; ++i) if (!read_result(search, i, &result)) return 1;
                 first_end = now();
                 if (!finished(search)) {

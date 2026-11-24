@@ -30,11 +30,11 @@ struct SystemProviderTests {
         precondition(query("jietu", scope: .actions).contains { $0.title == "Screenshot & Recording" })
         precondition(query("JIE TU", scope: .actions).contains { $0.title == "Screenshot & Recording" })
         precondition(query("調高音量", scope: .actions).allSatisfy { $0.kind == .action })
-        precondition(query("调高音量", scope: .actions).first?.target == "argus-action:volume-up")
+        precondition(query("调高音量", scope: .actions).first?.target == "searchbar-action:volume-up")
         precondition(query("bluetooth", scope: .actions).contains { $0.title == "Bluetooth Settings" })
         precondition(query("system settings", scope: .files).isEmpty)
         precondition(query("system settings", scope: .applications).isEmpty)
-        precondition(query("define notarealwordargus").contains {
+        precondition(query("define notarealwordsearchbar").contains {
             $0.kind == .dictionary && $0.target.hasPrefix("dict:") && !$0.snippet.isEmpty
         })
 
@@ -66,7 +66,7 @@ struct SystemProviderTests {
         precondition(!cancelled, "An explicitly cancelled query must never publish")
 
         var mailStages = 0
-        providers.search("argus-unlikely-mail-token", scope: .people) { results in
+        providers.search("searchbar-unlikely-mail-token", scope: .people) { results in
             precondition(Thread.isMainThread)
             precondition(results.allSatisfy { $0.kind == .contact || $0.kind == .mail })
             precondition(results.filter { $0.kind == .mail }.count <= 30)
@@ -77,7 +77,7 @@ struct SystemProviderTests {
 
         var actionCompleted = false
         let unsupported = SearchResult(id: "test", title: "Test", subtitle: "", kind: .action,
-                                       target: "argus-action:unsupported", score: 0)
+                                       target: "searchbar-action:unsupported", score: 0)
         ActionExecutor.execute(unsupported) { error in
             precondition(Thread.isMainThread && error != nil)
             actionCompleted = true

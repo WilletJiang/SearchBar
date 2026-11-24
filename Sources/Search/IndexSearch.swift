@@ -3,7 +3,7 @@ import Darwin
 
 /// Owns the serial reader and the lifetime of progressive query snapshots.
 final class IndexSearch {
-    private let readerQueue = DispatchQueue(label: "argus.index.reader", qos: .userInitiated)
+    private let readerQueue = DispatchQueue(label: "searchbar.index.reader", qos: .userInitiated)
     private let queryLock = NSLock()
     private var queryGeneration = 0
     private var stopped = false
@@ -11,13 +11,13 @@ final class IndexSearch {
     private let home: URL
 
     init(database: String, home: URL) {
-        reader = argus_index_open(database)
+        reader = searchbar_index_open(database)
         self.home = home
     }
 
     func stop() {
         queryLock.lock(); queryGeneration += 1; stopped = true; queryLock.unlock()
-        if let reader { argus_index_interrupt(reader) }
+        if let reader { searchbar_index_interrupt(reader) }
     }
 
     func prepare(after delay: Double = 0.25) {
@@ -25,13 +25,13 @@ final class IndexSearch {
             guard let self, let reader = self.reader else { return }
             self.queryLock.lock(); let active = !self.stopped; self.queryLock.unlock()
             guard active else { return }
-            if argus_index_prepare_snapshot(reader) < 0 { self.prepare(after: 0.5) }
+            if searchbar_index_prepare_snapshot(reader) < 0 { self.prepare(after: 0.5) }
         }
     }
 
     func search(_ query: String, scope: SearchScope, exclusions: ScanPolicy, completion: @escaping ([SearchResult], Double) -> Void) {
         queryLock.lock(); queryGeneration += 1; let generation = queryGeneration; queryLock.unlock()
-        if let reader { argus_index_interrupt(reader) }
+        if let reader { searchbar_index_interrupt(reader) }
         readerQueue.async { [weak self] in
             guard let self, let reader = self.reader else { DispatchQueue.main.async { completion([], 0) }; return }
             self.queryLock.lock(); let current = self.queryGeneration == generation; self.queryLock.unlock()
@@ -40,15 +40,15 @@ final class IndexSearch {
             let normalized = SearchText.normalized(query)
             let filter: Int32 = scope == .applications ? 2 : scope == .files ? 0 : -1
             if scope == .actions || scope == .people { DispatchQueue.main.async { completion([], 0) }; return }
-            guard let search = argus_search_open(reader, normalized, filter, 48) else {
+            guard let search = searchbar_search_open(reader, normalized, filter, 48) else {
                 DispatchQueue.main.async { if self.isCurrent(generation) { completion([], 0) } }
                 return
             }
-            defer { argus_search_close(search) }
-            let metadataCount = argus_search_metadata(search)
+            defer { searchbar_search_close(search) }
+            let metadataCount = searchbar_search_metadata(search)
             let metadata = self.results(from: search, count: metadataCount, normalized: normalized, exclusions: exclusions)
             let metadataTime = (ProcessInfo.processInfo.systemUptime - start) * 1000
-            let finished = metadataCount < 0 || argus_search_finished(search) != 0
+            let finished = metadataCount < 0 || searchbar_search_finished(search) != 0
             if !metadata.isEmpty || finished {
                 DispatchQueue.main.async {
                     guard self.isCurrent(generation) else { return }
@@ -56,7 +56,7 @@ final class IndexSearch {
                 }
             }
             guard !finished, self.isCurrent(generation) else { return }
-            let fullCount = argus_search_complete(search)
+            let fullCount = searchbar_search_complete(search)
             let results = self.results(from: search, count: fullCount, normalized: normalized, exclusions: exclusions)
             let milliseconds = (ProcessInfo.processInfo.systemUptime - start) * 1000
             DispatchQueue.main.async {
@@ -76,8 +76,8 @@ final class IndexSearch {
         var results: [SearchResult] = []
         results.reserveCapacity(max(0, Int(count)))
         for index in 0..<max(0, Int(count)) {
-            var hit = ArgusResult()
-            guard argus_search_read(search, Int32(index), &hit) != 0,
+            var hit = SearchBarResult()
+            guard searchbar_search_read(search, Int32(index), &hit) != 0,
                   let pathBytes = hit.path, let nameBytes = hit.name, let snippetBytes = hit.snippet else { break }
             let path = String(cString: pathBytes)
             let name = String(cString: nameBytes)
@@ -94,5 +94,5 @@ final class IndexSearch {
         return results
     }
 
-    deinit { if let reader { argus_index_close(reader) } }
+    deinit { if let reader { searchbar_index_close(reader) } }
 }

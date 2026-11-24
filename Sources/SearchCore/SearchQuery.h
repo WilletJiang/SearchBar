@@ -1,22 +1,22 @@
-#ifndef ARGUS_SEARCH_QUERY_H
-#define ARGUS_SEARCH_QUERY_H
+#ifndef SEARCHBAR_SEARCH_QUERY_H
+#define SEARCHBAR_SEARCH_QUERY_H
 
-#define ARGUS_QUERY_BYTES 2048
-#define ARGUS_MAX_TERMS 24
+#define SEARCHBAR_QUERY_BYTES 2048
+#define SEARCHBAR_MAX_TERMS 24
 
 typedef struct {
-    char text[ARGUS_QUERY_BYTES];
-    char *terms[ARGUS_MAX_TERMS];
+    char text[SEARCHBAR_QUERY_BYTES];
+    char *terms[SEARCHBAR_MAX_TERMS];
     int count;
-    char prefix[ARGUS_QUERY_BYTES];
+    char prefix[SEARCHBAR_QUERY_BYTES];
 } SearchQuery;
 
-int argus_query_parse(SearchQuery *query, const char *text);
+int searchbar_query_parse(SearchQuery *query, const char *text);
 /* Match expressions are owned by SQLite; release with sqlite3_free. */
-char *argus_query_match(SearchQuery *query, int body, int fuzzy);
-char *argus_query_body_expression(SearchQuery *query, int positional);
-double argus_query_score(SearchQuery *query, const char *name, const char *path,
+char *searchbar_query_match(SearchQuery *query, int body, int fuzzy);
+char *searchbar_query_body_expression(SearchQuery *query, int positional);
+double searchbar_query_score(SearchQuery *query, const char *name, const char *path,
                          const char *aliases, int fuzzy);
-int argus_query_body_matches(SearchQuery *query, const char *body);
+int searchbar_query_body_matches(SearchQuery *query, const char *body);
 
 #endif

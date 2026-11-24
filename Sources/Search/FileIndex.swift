@@ -4,9 +4,9 @@ import Darwin
 
 final class FileIndex {
     static var storageURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Argus", isDirectory: true)
+        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/SearchBar", isDirectory: true)
     }
-    private let writerQueue = DispatchQueue(label: "argus.index.writer", qos: .utility)
+    private let writerQueue = DispatchQueue(label: "searchbar.index.writer", qos: .utility)
     private var writer: OpaquePointer?
     private let searcher: IndexSearch
     private var watcher: FileWatcher?
@@ -46,7 +46,7 @@ final class FileIndex {
         try? FileManager.default.createDirectory(at: storage, withIntermediateDirectories: true)
         try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: storage.path)
         let path = storage.appendingPathComponent("index.sqlite").path
-        writer = argus_index_open(path)
+        writer = searchbar_index_open(path)
         searcher = IndexSearch(database: path, home: self.home)
     }
 
@@ -54,24 +54,24 @@ final class FileIndex {
         writerQueue.async { [weak self] in
             guard let self, let writer = self.writer else { self?.report("Could not open index. Check disk permissions.", 0); return }
             self.watcher = FileWatcher(paths: [self.home.path] + self.applicationRoots.map(\.path), queue: self.writerQueue) { [weak self] path, flags in self?.changed(path, flags: flags) }
-            self.report("Updating search index…", Int(argus_index_count(writer)))
-            if argus_index_upgrade(writer) == 0 {
-                self.report("Using previous index: " + String(cString: argus_index_error(writer)), Int(argus_index_count(writer)))
+            self.report("Updating search index…", Int(searchbar_index_count(writer)))
+            if searchbar_index_upgrade(writer) == 0 {
+                self.report("Using previous index: " + String(cString: searchbar_index_error(writer)), Int(searchbar_index_count(writer)))
             }
-            self.contentBytes = argus_index_content_bytes(writer)
+            self.contentBytes = searchbar_index_content_bytes(writer)
             self.scanAll()
         }
     }
 
-#if ARGUS_BENCHMARK
+#if SEARCHBAR_BENCHMARK
     func prepareBenchmarkIndex() {
         writerQueue.async {
             guard let writer = self.writer else { return }
-            guard argus_index_upgrade(writer) != 0 else {
+            guard searchbar_index_upgrade(writer) != 0 else {
                 self.report("Benchmark migration failed", 0); return
             }
-            _ = argus_index_prepare_snapshot(writer)
-            self.report("Index ready · frozen benchmark corpus", Int(argus_index_count(writer)))
+            _ = searchbar_index_prepare_snapshot(writer)
+            self.report("Index ready · frozen benchmark corpus", Int(searchbar_index_count(writer)))
         }
     }
 #endif
@@ -90,19 +90,19 @@ final class FileIndex {
         writerQueue.async { [weak self] in
             guard let self, let writer = self.writer else { return }
             if Preferences.shared.contentIndexing { self.scanAll() }
-            else { argus_index_clear_content(writer); self.contentBytes = 0; self.report("Content indexing is off", Int(argus_index_count(writer))) }
+            else { searchbar_index_clear_content(writer); self.contentBytes = 0; self.report("Content indexing is off", Int(searchbar_index_count(writer))) }
         }
     }
 
     func exclusionsChanged() {
         writerQueue.async { [weak self] in
             guard let self, let writer = self.writer else { return }
-            for path in Preferences.shared.excludedPaths { argus_index_remove_tree(writer, path) }
-            self.report("Updating search index…", Int(argus_index_count(writer)))
-            if argus_index_upgrade(writer) == 0 {
-                self.report("Using previous index: " + String(cString: argus_index_error(writer)), Int(argus_index_count(writer)))
+            for path in Preferences.shared.excludedPaths { searchbar_index_remove_tree(writer, path) }
+            self.report("Updating search index…", Int(searchbar_index_count(writer)))
+            if searchbar_index_upgrade(writer) == 0 {
+                self.report("Using previous index: " + String(cString: searchbar_index_error(writer)), Int(searchbar_index_count(writer)))
             }
-            self.contentBytes = argus_index_content_bytes(writer)
+            self.contentBytes = searchbar_index_content_bytes(writer)
             self.scanAll()
         }
     }
@@ -139,13 +139,13 @@ final class FileIndex {
         retries.removeAll()
         retryCount = 0
         contentCursor = 0; snapshotQueued = false
-        check(argus_index_clear_scan_jobs(writer))
-        check(argus_index_prune_excluded(writer, { path, context in
+        check(searchbar_index_clear_scan_jobs(writer))
+        check(searchbar_index_prune_excluded(writer, { path, context in
             guard let path, let context else { return 0 }
             let index = Unmanaged<FileIndex>.fromOpaque(context).takeUnretainedValue()
             return index.excluded(URL(fileURLWithPath: String(cString: path))) ? 1 : 0
         }, Unmanaged.passUnretained(self).toOpaque()))
-        report("Indexing apps and personal files…", Int(argus_index_count(writer)))
+        report("Indexing apps and personal files…", Int(searchbar_index_count(writer)))
         for root in applicationRoots {
             enqueue(Job(mode: root.pathExtension.lowercased() == "app" ? .item : .directory, path: root.path, applicationsOnly: true))
         }
@@ -156,10 +156,10 @@ final class FileIndex {
     private func enqueue(_ job: Job) {
         guard let writer, !scanPolicy.excludes(job.path) else { return }
         snapshotQueued = false
-        check(argus_index_queue_scan(writer, job.path, job.mode == .directory ? 0 : 1, job.applicationsOnly ? 1 : 0))
+        check(searchbar_index_queue_scan(writer, job.path, job.mode == .directory ? 0 : 1, job.applicationsOnly ? 1 : 0))
     }
 
-    private func path(from item: inout ArgusScanItem) -> String {
+    private func path(from item: inout SearchBarScanItem) -> String {
         withUnsafePointer(to: &item.path) { pointer in
             pointer.withMemoryRebound(to: CChar.self, capacity: 4096) { String(cString: $0) }
         }
@@ -170,8 +170,8 @@ final class FileIndex {
         if failure != nil { finishScan(); return }
         var candidate: Job?
         while candidate == nil {
-            var item = ArgusScanItem()
-            let scan = argus_index_next_scan(writer, &item)
+            var item = SearchBarScanItem()
+            let scan = searchbar_index_next_scan(writer, &item)
             if scan < 0 { check(0); finishScan(); return }
             let next: Job
             if scan > 0 {
@@ -181,7 +181,7 @@ final class FileIndex {
                 if !snapshotQueued { snapshotQueued = true; searcher.prepare() }
                 guard Preferences.shared.contentIndexing,
                       contentBytes + Int64(ContentExtractor.byteLimit) <= contentLimit else { break }
-                let content = argus_index_next_content(writer, contentCursor, &item)
+                let content = searchbar_index_next_content(writer, contentCursor, &item)
                 if content < 0 { check(0); finishScan(); return }
                 guard content > 0 else { break }
                 contentCursor = item.id
@@ -198,7 +198,7 @@ final class FileIndex {
         request.applicationsOnly = job.applicationsOnly
         if job.mode == .content, ProcessInfo.processInfo.systemUptime - lastReport > 0.2 {
             lastReport = ProcessInfo.processInfo.systemUptime
-            report("Filenames ready. Indexing contents…", Int(argus_index_count(writer)))
+            report("Filenames ready. Indexing contents…", Int(searchbar_index_count(writer)))
         }
         scanClient.perform(request, onBatch: { [weak self] entries in
             guard let self else { return }
@@ -224,14 +224,14 @@ final class FileIndex {
     }
 
     private func apply(_ entries: [ScanEntry], job: Job) {
-        guard let writer, failure == nil, check(argus_index_begin(writer)) else { return }
+        guard let writer, failure == nil, check(searchbar_index_begin(writer)) else { return }
         for entry in entries where !scanPolicy.excludes(entry.path) {
-            if entry.removed { check(argus_index_remove_tree(writer, entry.path)); continue }
+            if entry.removed { check(searchbar_index_remove_tree(writer, entry.path)); continue }
             if job.mode == .content {
                 if Preferences.shared.contentIndexing {
                     if let text = entry.text,
-                       argus_index_needs_update(writer, entry.path, entry.mtime, entry.size) == 0 {
-                        check(argus_index_set_content(writer, entry.path, text))
+                       searchbar_index_needs_update(writer, entry.path, entry.mtime, entry.size) == 0 {
+                        check(searchbar_index_set_content(writer, entry.path, text))
                     } else { enqueue(Job(mode: .item, path: entry.path)) }
                 }
                 continue
@@ -241,41 +241,41 @@ final class FileIndex {
             let eligible = !job.applicationsOnly && entry.regular &&
                 ContentExtractor.supports(URL(fileURLWithPath: entry.path), size: Int(entry.size))
             let contentNeeded = eligible && Preferences.shared.contentIndexing &&
-                argus_index_content_needed(writer, entry.path, entry.mtime) != 0
+                searchbar_index_content_needed(writer, entry.path, entry.mtime) != 0
             // App aliases follow the preferred language even when bundle mtime is unchanged.
-            if entry.kind == 2 || contentNeeded || argus_index_needs_update(writer, entry.path, entry.mtime, entry.size) != 0 {
-                check(argus_index_upsert_scanned(writer, entry.path, entry.name, entry.aliases,
+            if entry.kind == 2 || contentNeeded || searchbar_index_needs_update(writer, entry.path, entry.mtime, entry.size) != 0 {
+                check(searchbar_index_upsert_scanned(writer, entry.path, entry.name, entry.aliases,
                                                 entry.kind, entry.mtime, entry.size, eligible ? 1 : 0))
             }
             if contentNeeded { contentCursor = 0 }
         }
-        if failure == nil { check(argus_index_commit(writer)) }
-        else { argus_index_rollback(writer) }
-        contentBytes = argus_index_content_bytes(writer)
+        if failure == nil { check(searchbar_index_commit(writer)) }
+        else { searchbar_index_rollback(writer) }
+        contentBytes = searchbar_index_content_bytes(writer)
         if job.mode != .content, ProcessInfo.processInfo.systemUptime - lastReport > 0.2 {
             lastReport = ProcessInfo.processInfo.systemUptime
-            report("Indexing filenames…", Int(argus_index_count(writer)))
+            report("Indexing filenames…", Int(searchbar_index_count(writer)))
         }
     }
 
     private func finishScan() {
         guard let writer else { return }
-        check(argus_index_clear_scan_jobs(writer))
+        check(searchbar_index_clear_scan_jobs(writer))
         contentCursor = 0
         deferredPaths.removeAll(); retries.removeAll()
         scanClient.close()
-        if fullScan, failure == nil { check(argus_index_prune_missing(writer)) }
+        if fullScan, failure == nil { check(searchbar_index_prune_missing(writer)) }
         fullScan = false
         scanning = false
         let message = failure.map { "Index update failed: " + $0 } ?? (rejectedDirectories > 0 ? "Index ready · Some locations are currently unreadable" : "Index ready")
-        report(message, Int(argus_index_count(writer)))
+        report(message, Int(searchbar_index_count(writer)))
         if failure == nil { searcher.prepare() }
         if rescanRequested { rescanRequested = false; scanAll() }
     }
 
     @discardableResult private func check(_ result: Int32) -> Bool {
         guard result == 0, let writer else { return true }
-        failure = String(cString: argus_index_error(writer))
+        failure = String(cString: searchbar_index_error(writer))
         return false
     }
 
@@ -301,6 +301,6 @@ final class FileIndex {
         watcher = nil
         scanClient.cancel()
         scanClient.close()
-        if let writer { argus_index_close(writer) }
+        if let writer { searchbar_index_close(writer) }
     }
 }
